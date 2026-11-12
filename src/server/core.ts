@@ -7,9 +7,10 @@
 import "server-only";
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
+import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
-import { createCore, type Core } from "@/core/core";
-import type { SummaryEngine, SummaryStore, VideoCatalog } from "@/core/ports";
+import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
+import type { SummaryEngine, SummaryStore, UsageCounters, VideoCatalog } from "@/core/ports";
 
 const engine = once(() =>
   createGeminiSummaryEngine({
@@ -29,6 +30,26 @@ const store = once(() =>
   }),
 );
 
+const usage = once(() =>
+  createSupabaseUsageCounters({
+    url: requireEnv("SUPABASE_URL"),
+    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  }),
+);
+
+/** Limits come from the environment, falling back to the core's defaults. */
+function limitsFromEnv(): UsageLimits {
+  return {
+    guestDailySummaries: intEnv("GUEST_DAILY_SUMMARIES", DEFAULT_LIMITS.guestDailySummaries),
+    guestDailySummariesPerIp: intEnv(
+      "GUEST_DAILY_SUMMARIES_PER_IP",
+      DEFAULT_LIMITS.guestDailySummariesPerIp,
+    ),
+    memberDailySummaries: intEnv("MEMBER_DAILY_SUMMARIES", DEFAULT_LIMITS.memberDailySummaries),
+    dailyVideoMinutes: intEnv("DAILY_VIDEO_MINUTES", DEFAULT_LIMITS.dailyVideoMinutes),
+  };
+}
+
 export const getCore: () => Core = once(() =>
   createCore({
     engine: {
@@ -41,7 +62,13 @@ export const getCore: () => Core = once(() =>
       findSummary: (videoId, language) => store().findSummary(videoId, language),
       saveSummary: (summary) => store().saveSummary(summary),
     } satisfies SummaryStore,
+    usage: {
+      tryUse: (counter, day, amount, limit) => usage().tryUse(counter, day, amount, limit),
+      giveBack: (counter, day, amount) => usage().giveBack(counter, day, amount),
+      used: (counter, day) => usage().used(counter, day),
+    } satisfies UsageCounters,
     clock: { now: () => new Date() },
+    limits: limitsFromEnv(),
     onFailure: (error, { videoId }) =>
       console.error(`Summary failed for ${videoId}: ${describeError(error)}`, error),
   }),
@@ -57,6 +84,16 @@ function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) return String(error.message);
   return String(error);
+}
+
+function intEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Environment variable ${name} must be a whole number, got "${raw}"`);
+  }
+  return value;
 }
 
 function requireEnv(name: string): string {

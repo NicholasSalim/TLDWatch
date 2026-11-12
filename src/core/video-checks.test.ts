@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { createCore } from "./core";
 import type { Requester } from "./requester";
-import { FakeSummaryEngine, FakeVideoCatalog, InMemorySummaryStore, fixedClock } from "./testing";
+import {
+  FakeSummaryEngine,
+  FakeVideoCatalog,
+  InMemorySummaryStore,
+  InMemoryUsageCounters,
+  fixedClock,
+} from "./testing";
 
 const ID = "dQw4w9WgXcQ";
 const videoUrl = `https://youtu.be/${ID}`;
-const guest: Requester = { kind: "guest" };
-const member: Requester = { kind: "member" };
+const guest: Requester = { kind: "guest", guestId: "guest-1", ipHash: "ip-1" };
+const member: Requester = { kind: "member", memberId: "member-1" };
 
 function setup() {
   const engine = new FakeSummaryEngine();
   const catalog = new FakeVideoCatalog();
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, catalog, store, clock: fixedClock() });
+  const core = createCore({ engine, catalog, store, usage: new InMemoryUsageCounters(), clock: fixedClock() });
   return { core, engine, catalog, store };
 }
 

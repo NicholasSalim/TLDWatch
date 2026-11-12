@@ -4,7 +4,8 @@ import * as React from "react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Headphones, Paperclip } from "lucide-react";
-import type { SummaryRejection, SummaryResult } from "@/core/core";
+import type { SummariesLeft, SummaryRejection } from "@/core/core";
+import type { SummaryResponse } from "@/lib/api-types";
 import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { cn } from "@/lib/utils";
@@ -82,19 +83,36 @@ function rejectionText(rejection: SummaryRejection): string {
       return rejection.memberLimitMinutes
         ? `This video is over ${rejection.limitMinutes} minutes, the limit for Guests. Members can summarize videos up to ${rejection.memberLimitMinutes} minutes.`
         : `This video is over ${rejection.limitMinutes} minutes, the longest TLDWatch can summarize.`;
+    case "daily-limit-reached":
+      return rejection.memberDailyLimit
+        ? `You've used today's new summaries. You can make more ${whenLocal(rejection.resetsAt)}, or sign up as a Member for ${rejection.memberDailyLimit} a day. Summaries that already exist still open.`
+        : `You've used today's new summaries. You can make more ${whenLocal(rejection.resetsAt)}.`;
+    case "app-capacity-reached":
+      return `TLDWatch has read all the videos it can for now. Back ${whenLocal(rejection.resetsAt)}. Summaries that already exist still open.`;
     case "summary-failed":
       return "Something went wrong while summarizing this video. Please try again in a moment.";
   }
 }
 
-async function fetchSummary(videoUrl: string): Promise<SummaryResult> {
+/**
+ * A reset time in the Guest's own time zone: "today at 4:00 PM" west of UTC,
+ * "tomorrow at 7:00 AM" east of it.
+ */
+function whenLocal(iso: string): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const sameDay = at.toDateString() === new Date().toDateString();
+  return `${sameDay ? "today" : "tomorrow"} at ${time}`;
+}
+
+async function fetchSummary(videoUrl: string): Promise<SummaryResponse> {
   try {
     const response = await fetch("/api/summaries", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ videoUrl }),
     });
-    return (await response.json()) as SummaryResult;
+    return (await response.json()) as SummaryResponse;
   } catch {
     return { status: "rejected", reason: "summary-failed" };
   }
@@ -110,6 +128,7 @@ export function SummarizeInput() {
   const [language, setLanguage] = useState<Language>("english");
   const autoplay = useSyncExternalStore(subscribeAutoplay, readAutoplay, () => false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const [summariesLeft, setSummariesLeft] = useState<SummariesLeft | null>(null);
   const wrapperRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const noticeId = useId();
@@ -117,6 +136,14 @@ export function SummarizeInput() {
   const latestRequest = useRef(0);
 
   const expanded = isActive || value.length > 0;
+
+  // How many new Summaries are left today; also gives a first-time Guest their cookie.
+  useEffect(() => {
+    fetch("/api/summaries-left")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((left: SummariesLeft | null) => left && setSummariesLeft(left))
+      .catch(() => {});
+  }, []);
 
   // Cycle the placeholder while the input is idle.
   useEffect(() => {
@@ -155,6 +182,7 @@ export function SummarizeInput() {
     const request = ++latestRequest.current;
     setNotice({ kind: "summarizing", videoId: parsed.videoId });
     const result = await fetchSummary(value);
+    if (result.summariesLeft) setSummariesLeft(result.summariesLeft);
     if (request !== latestRequest.current) return;
     setNotice(
       result.status === "ready"
@@ -369,6 +397,13 @@ export function SummarizeInput() {
           )}
         </AnimatePresence>
       </div>
+
+      {summariesLeft && (
+        <p className="px-4 pt-3 text-xs text-haze/80">
+          {summariesLeft.left === 1 ? "1 new summary" : `${summariesLeft.left} new summaries`} left
+          today.
+        </p>
+      )}
     </div>
   );
 }

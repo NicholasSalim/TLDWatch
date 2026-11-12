@@ -2,7 +2,14 @@
  * Test doubles for the core's adapters: a Summary engine that counts calls,
  * an in-memory Store and a fixed Clock.
  */
-import type { Clock, SummaryEngine, SummaryStore, VideoCatalog, VideoFacts } from "./ports";
+import type {
+  Clock,
+  SummaryEngine,
+  SummaryStore,
+  UsageCounters,
+  VideoCatalog,
+  VideoFacts,
+} from "./ports";
 import type { Summary } from "./summary";
 
 const lengthContent = (detail: string) => ({
@@ -39,7 +46,7 @@ export class FakeSummaryEngine implements SummaryEngine {
   manual: boolean;
 
   constructor(
-    private respond: (videoId: string) => unknown = () => validEngineOutput(),
+    public respond: (videoId: string) => unknown = () => validEngineOutput(),
     options: { manual?: boolean } = {},
   ) {
     this.manual = options.manual ?? false;
@@ -102,6 +109,40 @@ export class FakeVideoCatalog implements VideoCatalog {
   }
 }
 
+export class InMemoryUsageCounters implements UsageCounters {
+  private counts = new Map<string, number>();
+
+  async tryUse(counter: string, day: string, amount: number, limit: number) {
+    const used = await this.used(counter, day);
+    if (used + amount > limit) return false;
+    this.counts.set(`${counter}@${day}`, used + amount);
+    return true;
+  }
+
+  async giveBack(counter: string, day: string, amount: number) {
+    const used = await this.used(counter, day);
+    this.counts.set(`${counter}@${day}`, Math.max(0, used - amount));
+  }
+
+  async used(counter: string, day: string) {
+    return this.counts.get(`${counter}@${day}`) ?? 0;
+  }
+}
+
 export const fixedClock = (iso = "2026-11-12T10:00:00.000Z"): Clock => ({
   now: () => new Date(iso),
 });
+
+/** A clock tests can move forward. */
+export class ControllableClock implements Clock {
+  private current: Date;
+  constructor(iso = "2026-11-12T10:00:00.000Z") {
+    this.current = new Date(iso);
+  }
+  now() {
+    return new Date(this.current);
+  }
+  set(iso: string) {
+    this.current = new Date(iso);
+  }
+}
