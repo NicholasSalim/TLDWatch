@@ -7,14 +7,19 @@
 import "server-only";
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
+import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
 import { createCore, type Core } from "@/core/core";
-import type { SummaryEngine, SummaryStore } from "@/core/ports";
+import type { SummaryEngine, SummaryStore, VideoCatalog } from "@/core/ports";
 
 const engine = once(() =>
   createGeminiSummaryEngine({
     apiKey: requireEnv("GEMINI_API_KEY"),
     model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
   }),
+);
+
+const catalog = once(() =>
+  createYouTubeVideoCatalog({ apiKey: requireEnv("YOUTUBE_API_KEY") }),
 );
 
 const store = once(() =>
@@ -29,6 +34,9 @@ export const getCore: () => Core = once(() =>
     engine: {
       summarizeYouTubeVideo: (videoId) => engine().summarizeYouTubeVideo(videoId),
     } satisfies SummaryEngine,
+    catalog: {
+      lookUpVideo: (videoId) => catalog().lookUpVideo(videoId),
+    } satisfies VideoCatalog,
     store: {
       findSummary: (videoId, language) => store().findSummary(videoId, language),
       saveSummary: (summary) => store().saveSummary(summary),

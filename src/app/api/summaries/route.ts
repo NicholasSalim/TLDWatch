@@ -13,7 +13,8 @@ export async function POST(request: Request) {
 
   let result: SummaryResult;
   try {
-    result = await getCore().requestSummary({ videoUrl });
+    // Everyone is a Guest until sign-in exists.
+    result = await getCore().requestSummary({ videoUrl, requester: { kind: "guest" } });
   } catch (error) {
     console.error("Summary request failed", error);
     result = { status: "rejected", reason: "summary-failed" };

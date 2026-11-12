@@ -2,12 +2,15 @@
  * The TLDWatch core: every business rule, free of any framework.
  * Route handlers turn requests into calls here and results into responses.
  */
-import type { Clock, SummaryEngine, SummaryStore } from "./ports";
+import { DURATION_LIMIT_MINUTES } from "./limits";
+import type { Clock, SummaryEngine, SummaryStore, VideoCatalog } from "./ports";
 import { engineOutputSchema, type Summary } from "./summary";
+import type { Requester } from "./requester";
 import { parseVideoUrl, type VideoUrlRejection } from "./video-url";
 
 export type CoreDeps = {
   engine: SummaryEngine;
+  catalog: VideoCatalog;
   store: SummaryStore;
   clock: Clock;
   /**
@@ -19,28 +22,39 @@ export type CoreDeps = {
   onFailure?: (error: unknown, context: { videoId: string }) => void;
 };
 
-export type SummaryRequest = { videoUrl: string };
+export type SummaryRequest = { videoUrl: string; requester: Requester };
 
-export type SummaryRejection = VideoUrlRejection | "summary-failed";
+export type SummaryRejection =
+  | {
+      status: "rejected";
+      reason: VideoUrlRejection | "video-unavailable" | "video-not-finished" | "summary-failed";
+    }
+  | {
+      status: "rejected";
+      reason: "video-too-long";
+      limitMinutes: number;
+      /** Set when signing up as a Member would allow this video. */
+      memberLimitMinutes?: number;
+    };
 
-export type SummaryResult =
-  | { status: "ready"; summary: Summary }
-  | { status: "rejected"; reason: SummaryRejection };
+export type SummaryResult = { status: "ready"; summary: Summary } | SummaryRejection;
 
 export function createCore({
   engine,
+  catalog,
   store,
   clock,
   generationTimeoutMs = 100_000,
   onFailure,
 }: CoreDeps) {
-  // Requests under way in this process, keyed by video ID. A request for a
+  // Generations under way in this process, keyed by video ID. A request for a
   // video already under way joins it, so the video is read at most once.
   const underWay = new Map<string, Promise<Summary | null>>();
 
-  /** Finds the stored Summary or reads the video; null when either fails. */
-  async function findOrGenerate(videoId: string): Promise<Summary | null> {
+  /** Reads the video and stores its Summary; null when that fails. */
+  async function generate(videoId: string): Promise<Summary | null> {
     try {
+      // Another request may have stored it since this one looked.
       const existing = await store.findSummary(videoId, "english");
       if (existing) return existing;
       const raw = await withDeadline(engine.summarizeYouTubeVideo(videoId), generationTimeoutMs);
@@ -61,16 +75,52 @@ export function createCore({
   function joinOrStart(videoId: string): Promise<Summary | null> {
     let pending = underWay.get(videoId);
     if (!pending) {
-      pending = findOrGenerate(videoId).finally(() => underWay.delete(videoId));
+      pending = generate(videoId).finally(() => underWay.delete(videoId));
       underWay.set(videoId, pending);
     }
     return pending;
   }
 
-  async function requestSummary({ videoUrl }: SummaryRequest): Promise<SummaryResult> {
+  /** Why this requester can't have this video summarized, if they can't. */
+  async function checkVideo(
+    videoId: string,
+    requester: Requester,
+  ): Promise<SummaryRejection | null> {
+    const facts = await catalog.lookUpVideo(videoId);
+    // The Summary engine reads public videos only.
+    if (!facts.found || facts.privacy !== "public") {
+      return { status: "rejected", reason: "video-unavailable" };
+    }
+    if (facts.broadcast !== "none") {
+      return { status: "rejected", reason: "video-not-finished" };
+    }
+    const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
+    if (facts.durationSeconds > limitMinutes * 60) {
+      const memberLimitMinutes = DURATION_LIMIT_MINUTES.member;
+      return requester.kind === "guest" && facts.durationSeconds <= memberLimitMinutes * 60
+        ? { status: "rejected", reason: "video-too-long", limitMinutes, memberLimitMinutes }
+        : { status: "rejected", reason: "video-too-long", limitMinutes };
+    }
+    return null;
+  }
+
+  async function requestSummary({ videoUrl, requester }: SummaryRequest): Promise<SummaryResult> {
     const parsed = parseVideoUrl(videoUrl);
     if (!parsed.ok) return { status: "rejected", reason: parsed.reason };
-    const summary = await joinOrStart(parsed.videoId);
+    const { videoId } = parsed;
+
+    try {
+      // A stored Summary is always served: the checks below protect quota.
+      const existing = await store.findSummary(videoId, "english");
+      if (existing) return { status: "ready", summary: existing };
+      const rejection = await checkVideo(videoId, requester);
+      if (rejection) return rejection;
+    } catch (error) {
+      onFailure?.(error, { videoId });
+      return { status: "rejected", reason: "summary-failed" };
+    }
+
+    const summary = await joinOrStart(videoId);
     if (!summary) return { status: "rejected", reason: "summary-failed" };
     return { status: "ready", summary };
   }

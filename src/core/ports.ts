@@ -22,6 +22,21 @@ export interface SummaryStore {
   saveSummary(summary: Summary): Promise<Summary>;
 }
 
+/** What can be known about a YouTube video without reading it. */
+export type VideoFacts =
+  | { found: false }
+  | {
+      found: true;
+      privacy: "public" | "unlisted" | "private";
+      broadcast: "none" | "live" | "upcoming";
+      durationSeconds: number;
+    };
+
+export interface VideoCatalog {
+  /** Looks a video up cheaply, without spending Summary engine quota. */
+  lookUpVideo(videoId: string): Promise<VideoFacts>;
+}
+
 export interface Clock {
   now(): Date;
 }
