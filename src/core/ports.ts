@@ -37,6 +37,22 @@ export interface VideoCatalog {
   lookUpVideo(videoId: string): Promise<VideoFacts>;
 }
 
+/**
+ * Daily usage counters, shared by every server instance. A counter is a key
+ * such as "guest:<id>" or "app:video-minutes"; a day is a UTC date
+ * ("2026-11-12").
+ */
+export interface UsageCounters {
+  /**
+   * Adds `amount` to the counter if that keeps it within `limit`, atomically.
+   * Returns false, and changes nothing, if it wouldn't.
+   */
+  tryUse(counter: string, day: string, amount: number, limit: number): Promise<boolean>;
+  /** Gives back an amount used by a request that then failed. */
+  giveBack(counter: string, day: string, amount: number): Promise<void>;
+  used(counter: string, day: string): Promise<number>;
+}
+
 export interface Clock {
   now(): Date;
 }
