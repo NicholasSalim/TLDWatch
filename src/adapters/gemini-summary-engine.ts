@@ -35,7 +35,17 @@ export function createGeminiSummaryEngine({
   apiKey: string;
   model: string;
 }): SummaryEngine {
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({
+    apiKey,
+    // YouTube URL input and most current models are served on v1beta only.
+    apiVersion: "v1beta",
+    httpOptions: {
+      // Stay inside the core's generation deadline: one quick retry for a
+      // transient overload, instead of the SDK's default minutes of backoff.
+      timeout: 90_000,
+      retryOptions: { attempts: 2, initialDelay: 2, maxDelay: 5 },
+    },
+  });
 
   return {
     async summarizeYouTubeVideo(videoId) {

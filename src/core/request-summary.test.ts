@@ -85,6 +85,31 @@ describe("requestSummary", () => {
     expect(engine.calls).toEqual([ID]);
   });
 
+  it("gives up on a generation that never finishes, so later requests can try again", async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new FakeSummaryEngine(undefined, { manual: true });
+      const store = new InMemorySummaryStore();
+      const core = createCore({
+        engine,
+        store,
+        clock: fixedClock(),
+        generationTimeoutMs: 90_000,
+      });
+      const request = { videoUrl: `https://youtu.be/${ID}` };
+
+      const hung = core.requestSummary(request);
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(await hung).toEqual({ status: "rejected", reason: "summary-failed" });
+
+      engine.manual = false;
+      expect((await core.requestSummary(request)).status).toBe("ready");
+      expect(engine.calls).toEqual([ID, ID]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("turns a Store error into summary-failed", async () => {
     const store = new InMemorySummaryStore();
     store.findSummary = async () => {

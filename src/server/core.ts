@@ -13,7 +13,7 @@ import type { SummaryEngine, SummaryStore } from "@/core/ports";
 const engine = once(() =>
   createGeminiSummaryEngine({
     apiKey: requireEnv("GEMINI_API_KEY"),
-    model: process.env.GEMINI_MODEL || "gemini-flash-latest",
+    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
   }),
 );
 

@@ -10,6 +10,11 @@ export type CoreDeps = {
   engine: SummaryEngine;
   store: SummaryStore;
   clock: Clock;
+  /**
+   * How long reading a video may take before it counts as failed. Without
+   * it, a hung engine call would leave every request for that video waiting.
+   */
+  generationTimeoutMs?: number;
   /** Told about each failed request, for server-side logging. Never shown to users. */
   onFailure?: (error: unknown, context: { videoId: string }) => void;
 };
@@ -22,7 +27,13 @@ export type SummaryResult =
   | { status: "ready"; summary: Summary }
   | { status: "rejected"; reason: SummaryRejection };
 
-export function createCore({ engine, store, clock, onFailure }: CoreDeps) {
+export function createCore({
+  engine,
+  store,
+  clock,
+  generationTimeoutMs = 100_000,
+  onFailure,
+}: CoreDeps) {
   // Requests under way in this process, keyed by video ID. A request for a
   // video already under way joins it, so the video is read at most once.
   const underWay = new Map<string, Promise<Summary | null>>();
@@ -32,7 +43,8 @@ export function createCore({ engine, store, clock, onFailure }: CoreDeps) {
     try {
       const existing = await store.findSummary(videoId, "english");
       if (existing) return existing;
-      const output = engineOutputSchema.parse(await engine.summarizeYouTubeVideo(videoId));
+      const raw = await withDeadline(engine.summarizeYouTubeVideo(videoId), generationTimeoutMs);
+      const output = engineOutputSchema.parse(raw);
       return await store.saveSummary({
         videoId,
         language: "english",
@@ -67,3 +79,11 @@ export function createCore({ engine, store, clock, onFailure }: CoreDeps) {
 }
 
 export type Core = ReturnType<typeof createCore>;
+
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
