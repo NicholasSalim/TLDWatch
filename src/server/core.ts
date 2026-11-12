@@ -34,13 +34,21 @@ export const getCore: () => Core = once(() =>
       saveSummary: (summary) => store().saveSummary(summary),
     } satisfies SummaryStore,
     clock: { now: () => new Date() },
-    onFailure: (error, { videoId }) => console.error(`Summary failed for ${videoId}`, error),
+    onFailure: (error, { videoId }) =>
+      console.error(`Summary failed for ${videoId}: ${describeError(error)}`, error),
   }),
 );
 
 function once<T>(make: () => T): () => T {
   let value: T | undefined;
   return () => (value ??= make());
+}
+
+// Store errors are plain objects, which loggers print as `{}`.
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) return String(error.message);
+  return String(error);
 }
 
 function requireEnv(name: string): string {
