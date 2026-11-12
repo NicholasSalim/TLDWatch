@@ -5,9 +5,11 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Headphones, Paperclip } from "lucide-react";
 import type { SummaryRejection, SummaryResult } from "@/core/core";
-import type { Summary } from "@/core/summary";
+import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { cn } from "@/lib/utils";
+import { Segmented } from "@/components/segmented";
+import { Summarizing, SummaryView } from "@/components/summary-view";
 
 // Adapted from the 21st.dev "ai-chat-input" by preetsuthar17, reshaped for TLDWatch.
 
@@ -18,9 +20,6 @@ const PLACEHOLDERS = [
   "youtube.com/watch?v=…",
   "A tutorial with 9 minutes of intro",
 ];
-
-const LENGTHS = ["Short", "Medium", "Detailed"] as const;
-type Length = (typeof LENGTHS)[number];
 
 const LANGUAGES = [
   { value: "english", label: "English" },
@@ -99,7 +98,7 @@ export function SummarizeInput() {
   const [showPlaceholder, setShowPlaceholder] = useState(true);
   const [isActive, setIsActive] = useState(false);
   const [value, setValue] = useState("");
-  const [length, setLength] = useState<Length>("Medium");
+  const [length, setLength] = useState<Length>("medium");
   const [language, setLanguage] = useState<Language>("english");
   const autoplay = useSyncExternalStore(subscribeAutoplay, readAutoplay, () => false);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -293,12 +292,15 @@ export function SummarizeInput() {
           className="overflow-hidden"
         >
           <div className="flex flex-wrap items-center gap-2 border-t border-white/8 px-3 pt-3 pb-3.5 sm:px-4">
-            <Segmented
-              label="Summary length"
-              options={LENGTHS.map((l) => ({ value: l, label: l }))}
-              value={length}
-              onChange={(v) => setLength(v as Length)}
-            />
+            {/* Once a Summary is showing, its own Length switcher takes over. */}
+            {notice?.kind !== "summary" && (
+              <Segmented
+                label="Summary length"
+                options={LENGTHS.map((l) => ({ value: l, label: LENGTH_LABELS[l] }))}
+                value={length}
+                onChange={(v) => setLength(v as Length)}
+              />
+            )}
             <Segmented
               label="Summary language"
               options={LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
@@ -339,12 +341,17 @@ export function SummarizeInput() {
               {notice.kind === "summarizing" ? (
                 <Summarizing videoId={notice.videoId} />
               ) : notice.kind === "summary" ? (
-                <SummaryView summary={notice.summary} length={length} language={language} />
+                <SummaryView
+                  summary={notice.summary}
+                  length={length}
+                  onLengthChange={setLength}
+                  originalRequested={language === "original"}
+                />
               ) : (
                 <p
                   className={cn(
                     "text-pretty text-sm leading-relaxed",
-                    notice.kind === "error" ? "text-[#ffb4a8]" : "text-haze",
+                    notice.kind === "error" ? "text-negative" : "text-haze",
                   )}
                 >
                   {notice.text}
@@ -358,60 +365,6 @@ export function SummarizeInput() {
   );
 }
 
-function Segmented({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  const onKeyDown = (e: React.KeyboardEvent, index: number) => {
-    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
-    if (!step) return;
-    e.preventDefault();
-    const next = (index + step + options.length) % options.length;
-    onChange(options[next].value);
-    refs.current[next]?.focus();
-  };
-
-  return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-full bg-white/6 p-1">
-      {options.map((option, i) => {
-        const checked = option.value === value;
-        return (
-          <button
-            key={option.value}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
-            onClick={(e) => {
-              e.stopPropagation();
-              onChange(option.value);
-            }}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            className={cn(
-              "h-7 rounded-full px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-lumen",
-              checked ? "bg-mist text-ink" : "text-haze hover:text-mist",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function noticeKey(notice: Notice): string {
   switch (notice.kind) {
     case "summarizing":
@@ -421,63 +374,4 @@ function noticeKey(notice: Notice): string {
     default:
       return notice.text;
   }
-}
-
-function Thumbnail({ videoId }: { videoId: string }) {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail, no optimisation needed
-    <img
-      src={`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`}
-      alt=""
-      width={112}
-      height={63}
-      className="aspect-video w-28 shrink-0 rounded-lg object-cover"
-    />
-  );
-}
-
-function Summarizing({ videoId }: { videoId: string }) {
-  return (
-    <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/4 p-3">
-      <Thumbnail videoId={videoId} />
-      <p className="text-pretty text-sm leading-relaxed text-haze">
-        <span className="font-medium text-mist">Video found.</span> Summarizing it now. A new
-        video can take up to a minute.
-      </p>
-    </div>
-  );
-}
-
-function SummaryView({
-  summary,
-  length,
-  language,
-}: {
-  summary: Summary;
-  length: Length;
-  language: Language;
-}) {
-  const content = summary.lengths[length.toLowerCase() as Lowercase<Length>];
-  return (
-    <article className="rounded-2xl border border-white/10 bg-white/4 p-4 sm:p-5">
-      <div className="flex items-center gap-4">
-        <Thumbnail videoId={summary.videoId} />
-        <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">
-          {length} summary
-        </h2>
-      </div>
-      {language === "original" && (
-        <p className="mt-3 text-pretty text-sm text-haze">
-          Original-language summaries are coming soon. Here it is in English.
-        </p>
-      )}
-      <p className="mt-4 text-pretty text-base leading-relaxed text-mist">{content.overview}</p>
-      <h3 className="mt-5 text-sm font-semibold tracking-wide text-haze uppercase">Key points</h3>
-      <ul className="mt-2 list-disc space-y-1.5 pl-5 text-pretty text-sm leading-relaxed text-mist/90 marker:text-lumen">
-        {content.keyPoints.map((point, i) => (
-          <li key={i}>{point}</li>
-        ))}
-      </ul>
-    </article>
-  );
 }

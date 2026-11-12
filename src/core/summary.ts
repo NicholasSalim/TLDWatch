@@ -8,6 +8,12 @@ import { z } from "zod";
 export const LENGTHS = ["short", "medium", "detailed"] as const;
 export type Length = (typeof LENGTHS)[number];
 
+export const LENGTH_LABELS: Record<Length, string> = {
+  short: "Short",
+  medium: "Medium",
+  detailed: "Detailed",
+};
+
 const timestampSchema = z.object({
   seconds: z.number().int().nonnegative(),
   label: z.string().min(1),
