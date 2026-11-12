@@ -2,7 +2,7 @@
  * Test doubles for the core's adapters: a Summary engine that counts calls,
  * an in-memory Store and a fixed Clock.
  */
-import type { Clock, SummaryEngine, SummaryStore } from "./ports";
+import type { Clock, SummaryEngine, SummaryStore, VideoCatalog, VideoFacts } from "./ports";
 import type { Summary } from "./summary";
 
 const lengthContent = (detail: string) => ({
@@ -72,6 +72,33 @@ export class InMemorySummaryStore implements SummaryStore {
     if (existing) return existing;
     this.summaries.set(key, summary);
     return summary;
+  }
+}
+
+const PUBLIC_FIVE_MINUTE_VIDEO: VideoFacts = {
+  found: true,
+  privacy: "public",
+  broadcast: "none",
+  durationSeconds: 300,
+};
+
+/** Every video is a public 5-minute video unless told otherwise. */
+export class FakeVideoCatalog implements VideoCatalog {
+  lookups: string[] = [];
+  private videos = new Map<string, VideoFacts>();
+
+  set(videoId: string, facts: Partial<Extract<VideoFacts, { found: true }>> | { found: false }) {
+    this.videos.set(
+      videoId,
+      "found" in facts && facts.found === false
+        ? { found: false }
+        : ({ ...PUBLIC_FIVE_MINUTE_VIDEO, ...facts } as VideoFacts),
+    );
+  }
+
+  async lookUpVideo(videoId: string): Promise<VideoFacts> {
+    this.lookups.push(videoId);
+    return this.videos.get(videoId) ?? PUBLIC_FIVE_MINUTE_VIDEO;
   }
 }
 

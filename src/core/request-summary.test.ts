@@ -1,12 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCore } from "./core";
-import { FakeSummaryEngine, InMemorySummaryStore, fixedClock, validEngineOutput } from "./testing";
+import {
+  FakeSummaryEngine,
+  FakeVideoCatalog,
+  InMemorySummaryStore,
+  fixedClock,
+  validEngineOutput,
+} from "./testing";
 
 const ID = "dQw4w9WgXcQ";
+const guest = { kind: "guest" } as const;
 
 function setup(engine = new FakeSummaryEngine()) {
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, store, clock: fixedClock() });
+  const core = createCore({ engine, catalog: new FakeVideoCatalog(), store, clock: fixedClock() });
   return { core, engine, store };
 }
 
@@ -14,7 +21,7 @@ describe("requestSummary", () => {
   it("returns an English Summary with all three Lengths for a YouTube Video URL", async () => {
     const { core } = setup();
 
-    const result = await core.requestSummary({ videoUrl: `https://www.youtube.com/watch?v=${ID}` });
+    const result = await core.requestSummary({ videoUrl: `https://www.youtube.com/watch?v=${ID}`, requester: guest });
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") return;
@@ -28,9 +35,9 @@ describe("requestSummary", () => {
   it("reads a video once, however its link is written, and reuses the stored Summary", async () => {
     const { core, engine } = setup();
 
-    const first = await core.requestSummary({ videoUrl: `https://www.youtube.com/watch?v=${ID}` });
-    const second = await core.requestSummary({ videoUrl: `https://youtu.be/${ID}?si=abc` });
-    const third = await core.requestSummary({ videoUrl: `https://www.youtube.com/shorts/${ID}` });
+    const first = await core.requestSummary({ videoUrl: `https://www.youtube.com/watch?v=${ID}`, requester: guest });
+    const second = await core.requestSummary({ videoUrl: `https://youtu.be/${ID}?si=abc`, requester: guest });
+    const third = await core.requestSummary({ videoUrl: `https://www.youtube.com/shorts/${ID}`, requester: guest });
 
     expect(engine.calls).toEqual([ID]);
     expect(second).toEqual(first);
@@ -42,9 +49,9 @@ describe("requestSummary", () => {
     const { core } = setup(engine);
 
     const requests = [
-      core.requestSummary({ videoUrl: `https://www.youtube.com/watch?v=${ID}` }),
-      core.requestSummary({ videoUrl: `https://m.youtube.com/watch?v=${ID}` }),
-      core.requestSummary({ videoUrl: `youtu.be/${ID}` }),
+      core.requestSummary({ videoUrl: `https://www.youtube.com/watch?v=${ID}`, requester: guest }),
+      core.requestSummary({ videoUrl: `https://m.youtube.com/watch?v=${ID}`, requester: guest }),
+      core.requestSummary({ videoUrl: `youtu.be/${ID}`, requester: guest }),
     ];
     await vi.waitFor(() => expect(engine.calls.length).toBeGreaterThan(0));
     engine.finish();
@@ -71,10 +78,15 @@ describe("requestSummary", () => {
       }
       return store.findSummary(videoId, language);
     };
-    const core = createCore({ engine, store: slowFirstLookups, clock: fixedClock() });
+    const core = createCore({
+      engine,
+      catalog: new FakeVideoCatalog(),
+      store: slowFirstLookups,
+      clock: fixedClock(),
+    });
 
-    const first = core.requestSummary({ videoUrl: `https://youtu.be/${ID}` });
-    const second = core.requestSummary({ videoUrl: `https://youtu.be/${ID}` });
+    const first = core.requestSummary({ videoUrl: `https://youtu.be/${ID}`, requester: guest });
+    const second = core.requestSummary({ videoUrl: `https://youtu.be/${ID}`, requester: guest });
     await vi.waitFor(() => expect(engine.calls.length).toBe(1));
     engine.finish();
     await first;
@@ -92,18 +104,19 @@ describe("requestSummary", () => {
       const store = new InMemorySummaryStore();
       const core = createCore({
         engine,
+        catalog: new FakeVideoCatalog(),
         store,
         clock: fixedClock(),
         generationTimeoutMs: 90_000,
       });
       const request = { videoUrl: `https://youtu.be/${ID}` };
 
-      const hung = core.requestSummary(request);
+      const hung = core.requestSummary({ ...request, requester: guest });
       await vi.advanceTimersByTimeAsync(90_000);
       expect(await hung).toEqual({ status: "rejected", reason: "summary-failed" });
 
       engine.manual = false;
-      expect((await core.requestSummary(request)).status).toBe("ready");
+      expect((await core.requestSummary({ ...request, requester: guest })).status).toBe("ready");
       expect(engine.calls).toEqual([ID, ID]);
     } finally {
       vi.useRealTimers();
@@ -115,9 +128,14 @@ describe("requestSummary", () => {
     store.findSummary = async () => {
       throw new Error("database unreachable");
     };
-    const core = createCore({ engine: new FakeSummaryEngine(), store, clock: fixedClock() });
+    const core = createCore({
+      engine: new FakeSummaryEngine(),
+      catalog: new FakeVideoCatalog(),
+      store,
+      clock: fixedClock(),
+    });
 
-    expect(await core.requestSummary({ videoUrl: `https://youtu.be/${ID}` })).toEqual({
+    expect(await core.requestSummary({ videoUrl: `https://youtu.be/${ID}`, requester: guest })).toEqual({
       status: "rejected",
       reason: "summary-failed",
     });
@@ -131,7 +149,7 @@ describe("requestSummary", () => {
   ])("rejects %j as %s without reading anything", async (videoUrl, reason) => {
     const { core, engine } = setup();
 
-    expect(await core.requestSummary({ videoUrl })).toEqual({ status: "rejected", reason });
+    expect(await core.requestSummary({ videoUrl, requester: guest })).toEqual({ status: "rejected", reason });
     expect(engine.calls).toEqual([]);
   });
 
@@ -142,10 +160,10 @@ describe("requestSummary", () => {
     const { core } = setup(engine);
     const request = { videoUrl: `https://youtu.be/${ID}` };
 
-    expect(await core.requestSummary(request)).toEqual({ status: "rejected", reason: "summary-failed" });
+    expect(await core.requestSummary({ ...request, requester: guest })).toEqual({ status: "rejected", reason: "summary-failed" });
 
     output = validEngineOutput();
-    const retry = await core.requestSummary(request);
+    const retry = await core.requestSummary({ ...request, requester: guest });
     expect(retry.status).toBe("ready");
     expect(engine.calls).toEqual([ID, ID]);
   });
@@ -160,8 +178,8 @@ describe("requestSummary", () => {
     const { core } = setup(engine);
 
     const requests = [
-      core.requestSummary({ videoUrl: `https://youtu.be/${ID}` }),
-      core.requestSummary({ videoUrl: `https://youtu.be/${ID}` }),
+      core.requestSummary({ videoUrl: `https://youtu.be/${ID}`, requester: guest }),
+      core.requestSummary({ videoUrl: `https://youtu.be/${ID}`, requester: guest }),
     ];
     await vi.waitFor(() => expect(engine.calls.length).toBeGreaterThan(0));
     engine.finish();

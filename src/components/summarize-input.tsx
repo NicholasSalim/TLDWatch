@@ -64,8 +64,8 @@ function writeAutoplay(on: boolean) {
   autoplayListeners.forEach((listener) => listener());
 }
 
-function rejectionText(reason: SummaryRejection): string {
-  switch (reason) {
+function rejectionText(rejection: SummaryRejection): string {
+  switch (rejection.reason) {
     case "empty":
       return "Paste a YouTube link first.";
     case "not-a-url":
@@ -74,6 +74,14 @@ function rejectionText(reason: SummaryRejection): string {
       return "TLDWatch reads YouTube links only. Saved a clip from TikTok or Instagram? Upload the video file instead.";
     case "no-video-id":
       return "That YouTube link doesn't point to a single video. Open the video and copy its link.";
+    case "video-unavailable":
+      return "TLDWatch can't read this video. It may be private, unlisted, members-only or deleted. Only public videos can be summarized.";
+    case "video-not-finished":
+      return "This video is live or hasn't premiered yet. Come back once it's over and it can be summarized.";
+    case "video-too-long":
+      return rejection.memberLimitMinutes
+        ? `This video is over ${rejection.limitMinutes} minutes, the limit for Guests. Members can summarize videos up to ${rejection.memberLimitMinutes} minutes.`
+        : `This video is over ${rejection.limitMinutes} minutes, the longest TLDWatch can summarize.`;
     case "summary-failed":
       return "Something went wrong while summarizing this video. Please try again in a moment.";
   }
@@ -141,7 +149,7 @@ export function SummarizeInput() {
     event.preventDefault();
     const parsed = parseVideoUrl(value);
     if (!parsed.ok) {
-      setNotice({ kind: "error", text: rejectionText(parsed.reason) });
+      setNotice({ kind: "error", text: rejectionText({ status: "rejected", reason: parsed.reason }) });
       return;
     }
     const request = ++latestRequest.current;
@@ -151,7 +159,7 @@ export function SummarizeInput() {
     setNotice(
       result.status === "ready"
         ? { kind: "summary", summary: result.summary }
-        : { kind: "error", text: rejectionText(result.reason) },
+        : { kind: "error", text: rejectionText(result) },
     );
   };
 
