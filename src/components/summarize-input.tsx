@@ -4,6 +4,8 @@ import * as React from "react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Headphones, Paperclip } from "lucide-react";
+import type { SummaryRejection, SummaryResult } from "@/core/core";
+import type { Summary } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +31,8 @@ type Language = (typeof LANGUAGES)[number]["value"];
 type Notice =
   | { kind: "error"; text: string }
   | { kind: "info"; text: string }
-  | { kind: "ready"; videoId: string };
+  | { kind: "summarizing"; videoId: string }
+  | { kind: "summary"; summary: Summary };
 
 const AUTOPLAY_KEY = "tldwatch:autoplay";
 
@@ -62,27 +65,31 @@ function writeAutoplay(on: boolean) {
   autoplayListeners.forEach((listener) => listener());
 }
 
-function noticeFor(input: string): Notice {
-  const result = parseVideoUrl(input);
-  if (result.ok) return { kind: "ready", videoId: result.videoId };
-  switch (result.reason) {
+function rejectionText(reason: SummaryRejection): string {
+  switch (reason) {
     case "empty":
-      return { kind: "error", text: "Paste a YouTube link first." };
+      return "Paste a YouTube link first.";
     case "not-a-url":
-      return {
-        kind: "error",
-        text: "That isn't a link. Paste a YouTube video link, like youtube.com/watch?v=…",
-      };
+      return "That isn't a link. Paste a YouTube video link, like youtube.com/watch?v=…";
     case "not-youtube":
-      return {
-        kind: "error",
-        text: "TLDWatch reads YouTube links only. Saved a clip from TikTok or Instagram? Upload the video file instead.",
-      };
+      return "TLDWatch reads YouTube links only. Saved a clip from TikTok or Instagram? Upload the video file instead.";
     case "no-video-id":
-      return {
-        kind: "error",
-        text: "That YouTube link doesn't point to a single video. Open the video and copy its link.",
-      };
+      return "That YouTube link doesn't point to a single video. Open the video and copy its link.";
+    case "summary-failed":
+      return "Something went wrong while summarizing this video. Please try again in a moment.";
+  }
+}
+
+async function fetchSummary(videoUrl: string): Promise<SummaryResult> {
+  try {
+    const response = await fetch("/api/summaries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoUrl }),
+    });
+    return (await response.json()) as SummaryResult;
+  } catch {
+    return { status: "rejected", reason: "summary-failed" };
   }
 }
 
@@ -99,6 +106,8 @@ export function SummarizeInput() {
   const wrapperRef = useRef<HTMLFormElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const noticeId = useId();
+  // Only the latest submission may update the notice.
+  const latestRequest = useRef(0);
 
   const expanded = isActive || value.length > 0;
 
@@ -129,9 +138,22 @@ export function SummarizeInput() {
     return () => document.removeEventListener("pointerdown", handlePointer);
   }, []);
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setNotice(noticeFor(value));
+    const parsed = parseVideoUrl(value);
+    if (!parsed.ok) {
+      setNotice({ kind: "error", text: rejectionText(parsed.reason) });
+      return;
+    }
+    const request = ++latestRequest.current;
+    setNotice({ kind: "summarizing", videoId: parsed.videoId });
+    const result = await fetchSummary(value);
+    if (request !== latestRequest.current) return;
+    setNotice(
+      result.status === "ready"
+        ? { kind: "summary", summary: result.summary }
+        : { kind: "error", text: rejectionText(result.reason) },
+    );
   };
 
   const toggleAutoplay = () => writeAutoplay(!autoplay);
@@ -193,7 +215,7 @@ export function SummarizeInput() {
               value={value}
               onChange={(e) => {
                 setValue(e.target.value);
-                if (notice) setNotice(null);
+                if (notice?.kind === "error" || notice?.kind === "info") setNotice(null);
               }}
               onFocus={() => setIsActive(true)}
               className="relative z-10 w-full bg-transparent py-2 text-base text-mist outline-none sm:text-lg"
@@ -308,14 +330,16 @@ export function SummarizeInput() {
         <AnimatePresence mode="wait">
           {notice && (
             <motion.div
-              key={notice.kind === "ready" ? notice.videoId : notice.text}
+              key={noticeKey(notice)}
               initial={{ opacity: 0, y: reduceMotion ? 0 : 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
             >
-              {notice.kind === "ready" ? (
-                <ReadyPreview videoId={notice.videoId} length={length} language={language} />
+              {notice.kind === "summarizing" ? (
+                <Summarizing videoId={notice.videoId} />
+              ) : notice.kind === "summary" ? (
+                <SummaryView summary={notice.summary} length={length} language={language} />
               ) : (
                 <p
                   className={cn(
@@ -388,30 +412,72 @@ function Segmented({
   );
 }
 
-function ReadyPreview({
-  videoId,
+function noticeKey(notice: Notice): string {
+  switch (notice.kind) {
+    case "summarizing":
+      return `summarizing:${notice.videoId}`;
+    case "summary":
+      return `summary:${notice.summary.videoId}`;
+    default:
+      return notice.text;
+  }
+}
+
+function Thumbnail({ videoId }: { videoId: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail, no optimisation needed
+    <img
+      src={`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`}
+      alt=""
+      width={112}
+      height={63}
+      className="aspect-video w-28 shrink-0 rounded-lg object-cover"
+    />
+  );
+}
+
+function Summarizing({ videoId }: { videoId: string }) {
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/4 p-3">
+      <Thumbnail videoId={videoId} />
+      <p className="text-pretty text-sm leading-relaxed text-haze">
+        <span className="font-medium text-mist">Video found.</span> Summarizing it now. A new
+        video can take up to a minute.
+      </p>
+    </div>
+  );
+}
+
+function SummaryView({
+  summary,
   length,
   language,
 }: {
-  videoId: string;
+  summary: Summary;
   length: Length;
   language: Language;
 }) {
+  const content = summary.lengths[length.toLowerCase() as Lowercase<Length>];
   return (
-    <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/4 p-3">
-      {/* eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail, no optimisation needed */}
-      <img
-        src={`https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`}
-        alt=""
-        width={112}
-        height={63}
-        className="aspect-video w-28 shrink-0 rounded-lg object-cover"
-      />
-      <p className="text-pretty text-sm leading-relaxed text-haze">
-        <span className="font-medium text-mist">Video found.</span> A {length.toLowerCase()}{" "}
-        {language === "english" ? "English" : "original-language"} summary will appear here once
-        summaries are switched on.
-      </p>
-    </div>
+    <article className="rounded-2xl border border-white/10 bg-white/4 p-4 sm:p-5">
+      <div className="flex items-center gap-4">
+        <Thumbnail videoId={summary.videoId} />
+        <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">
+          {length} summary
+        </h2>
+      </div>
+      {language === "original" && (
+        <p className="mt-3 text-pretty text-sm text-haze">
+          Original-language summaries are coming soon. Here it is in English.
+        </p>
+      )}
+      <p className="mt-4 text-pretty text-base leading-relaxed text-mist">{content.overview}</p>
+      <h3 className="mt-5 text-sm font-semibold tracking-wide text-haze uppercase">Key points</h3>
+      <ul className="mt-2 list-disc space-y-1.5 pl-5 text-pretty text-sm leading-relaxed text-mist/90 marker:text-lumen">
+        {content.keyPoints.map((point, i) => (
+          <li key={i}>{point}</li>
+        ))}
+      </ul>
+    </article>
   );
 }

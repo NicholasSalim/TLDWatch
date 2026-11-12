@@ -4,9 +4,11 @@
  * Every YouTube link form for the same video yields the same ID.
  */
 
+export type VideoUrlRejection = "empty" | "not-a-url" | "not-youtube" | "no-video-id";
+
 export type VideoUrlResult =
   | { ok: true; videoId: string }
-  | { ok: false; reason: "empty" | "not-a-url" | "not-youtube" | "no-video-id" };
+  | { ok: false; reason: VideoUrlRejection };
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
