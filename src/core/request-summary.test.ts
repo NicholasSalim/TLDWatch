@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createCore } from "./core";
 import type { Requester } from "./requester";
 import {
+  FakeNaturalVoice,
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
   InMemoryHistoryStore,
   InMemoryMemberStore,
+  InMemoryNarrationAudioStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   fixedClock,
@@ -18,7 +20,7 @@ const guest: Requester = { kind: "guest", guestId: "guest-1", ipHash: "ip-1" };
 
 function setup(engine = new FakeSummaryEngine()) {
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), clock: fixedClock() });
   return { core, engine, store };
 }
 
@@ -88,7 +90,7 @@ describe("requestSummary", () => {
       engine,
       catalog: new FakeVideoCatalog(),
       store: slowFirstLookups,
-      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
       clock: fixedClock(),
     });
 
@@ -114,7 +116,7 @@ describe("requestSummary", () => {
         engine,
         catalog: new FakeVideoCatalog(),
         store,
-        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
         clock: fixedClock(),
         generationTimeoutMs: 90_000,
       });
@@ -142,7 +144,7 @@ describe("requestSummary", () => {
       engine: new FakeSummaryEngine(),
       catalog: new FakeVideoCatalog(),
       store,
-      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
       clock: fixedClock(),
     });
 

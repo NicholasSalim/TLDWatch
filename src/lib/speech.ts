@@ -65,6 +65,15 @@ export function voicesFor(all: SpeechSynthesisVoice[], languageCode: string): Sp
   return all.filter((v) => baseLanguage(v.lang) === base);
 }
 
+/**
+ * Call synchronously inside the click, before any await: iOS only lets speech
+ * start from a user gesture.
+ */
+export function primeSpeech() {
+  if (!speechSupported()) return;
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+}
+
 /** Small per-browser preferences: the chosen voice per language, and the speed. */
 export function readPreference(key: string): string | null {
   try {

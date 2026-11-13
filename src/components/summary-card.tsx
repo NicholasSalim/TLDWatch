@@ -94,6 +94,9 @@ export function SummaryCard({
       narration={
         <NarrationPlayer
           key={`${length}:${shown.language}`}
+          videoId={shown.videoId}
+          language={shown.language}
+          length={length}
           chunks={narrationScript(shown.lengths[length])}
           languageCode={narrationLanguage}
           languageName={shown.language === "original" ? spokenNames.english : "English"}

@@ -3,8 +3,11 @@
  * Route handlers turn requests into calls here and results into responses.
  */
 import { DURATION_LIMIT_MINUTES } from "./limits";
+import { narrationScript } from "./narration";
 import type {
   Clock,
+  NarrationAudioStore,
+  NaturalVoice,
   HistoryStore,
   Member,
   MemberStore,
@@ -54,7 +57,11 @@ export type CoreDeps = {
   usage: UsageCounters;
   members: MemberStore;
   history: HistoryStore;
+  voice: NaturalVoice;
+  narrationAudio: NarrationAudioStore;
   clock: Clock;
+  /** Natural voice characters the whole app may use per calendar month. */
+  naturalVoiceMonthlyCharacters?: number;
   limits?: UsageLimits;
   /**
    * How long reading a video may take before it counts as failed. Without
@@ -104,6 +111,33 @@ export type SummaryResult =
     }
   | SummaryRejection;
 
+export type NarrationRequest = {
+  videoId: string;
+  language: SummaryLanguage;
+  length: Length;
+  requester: Requester;
+  /** Which Natural voice a Member chose; the default if missing or unknown. */
+  naturalVoiceId?: string;
+};
+
+export type NarrationResult =
+  | { voice: "natural"; audioUrl: string }
+  | {
+      voice: "standard";
+      reason: "guest" | "allowance-used-up" | "natural-voice-unavailable" | "no-summary";
+    };
+
+export type NaturalVoiceAllowance = { charactersLeft: number; resetsAt: string };
+
+const NATURAL_VOICE_CHARACTERS = "app:natural-voice-characters";
+
+/** Making one audio may take this long, inside the narration route's 60 seconds. */
+const SYNTHESIS_TIMEOUT_MS = 30_000;
+
+/** How long a server waits for audio another server is making: 25 × 1s. */
+const CLAIM_WAIT_POLLS = 25;
+const CLAIM_WAIT_INTERVAL_MS = 1_000;
+
 /** How many History entries come back at a time. */
 const HISTORY_PAGE = 50;
 
@@ -143,7 +177,11 @@ export function createCore({
   usage,
   members,
   history,
+  voice,
+  narrationAudio,
   clock,
+  // Below ElevenLabs' free 10,000 credits a month.
+  naturalVoiceMonthlyCharacters = 8_000,
   limits = DEFAULT_LIMITS,
   // Reading plus translating must fit inside the route's 120 seconds.
   generationTimeoutMs = 85_000,
@@ -514,8 +552,119 @@ export function createCore({
     await history.removeEntry(memberId, videoId);
   }
 
+  // Natural voice audio being made in this process, keyed by its storage key.
+  const narrating = new Map<string, Promise<NarrationResult>>();
+
+  /**
+   * Narration for the Summary, Length and language on screen. Members get the
+   * Natural voice: stored audio if it exists (free), else new audio within
+   * the month's shared allowance. Everyone else, or once the allowance is
+   * used up, gets the Standard voice.
+   */
+  async function requestNarration({
+    videoId,
+    language,
+    length,
+    requester,
+    naturalVoiceId,
+  }: NarrationRequest): Promise<NarrationResult> {
+    if (requester.kind !== "member") return { voice: "standard", reason: "guest" };
+    if (!isVideoId(videoId)) return { voice: "standard", reason: "no-summary" };
+
+    let summary: Summary | null;
+    try {
+      summary = await store.findSummary(videoId, language);
+    } catch (error) {
+      onFailure?.(error, { videoId });
+      return { voice: "standard", reason: "natural-voice-unavailable" };
+    }
+    if (!summary) return { voice: "standard", reason: "no-summary" };
+
+    // A voice native to the language being read; anything not on its list gets the default.
+    const languageCode = language === "original" ? summary.spokenLanguage : "en";
+    const allowed = voice.voicesFor(languageCode);
+    const voiceId =
+      naturalVoiceId && allowed.includes(naturalVoiceId) ? naturalVoiceId : allowed[0];
+    // Voice and model are part of the key, so changing either never replays old audio.
+    const key = `${videoId}/${language}/${length}/${voiceId}-${voice.model}.mp3`;
+    let pending = narrating.get(key);
+    if (!pending) {
+      const text = narrationScript(summary.lengths[length]).join(" ");
+      pending = narrate({ key, videoId, text, languageCode, voiceId }).finally(() =>
+        narrating.delete(key),
+      );
+      narrating.set(key, pending);
+    }
+    return pending;
+  }
+
+  async function narrate({
+    key,
+    videoId,
+    text,
+    languageCode,
+    voiceId,
+  }: {
+    key: string;
+    videoId: string;
+    text: string;
+    languageCode: string;
+    voiceId: string;
+  }): Promise<NarrationResult> {
+    const month = utcMonth(clock.now());
+    const claim = `narration-claim:${key}`;
+    let claimed = false;
+    let characters = 0;
+    try {
+      const stored = await narrationAudio.findAudio(key);
+      if (stored) return { voice: "natural", audioUrl: stored };
+
+      // Only one server makes each audio; the others wait for it to appear.
+      if (!(await usage.tryUse(claim, month, 1, 1))) return await waitForAudio(key);
+      claimed = true;
+
+      if (!(await usage.tryUse(NATURAL_VOICE_CHARACTERS, month, text.length, naturalVoiceMonthlyCharacters))) {
+        await usage.giveBack(claim, month, 1);
+        return { voice: "standard", reason: "allowance-used-up" };
+      }
+      characters = text.length;
+
+      const mp3 = await withDeadline(voice.synthesize(text, languageCode, voiceId), SYNTHESIS_TIMEOUT_MS);
+      return { voice: "natural", audioUrl: await narrationAudio.saveAudio(key, mp3) };
+    } catch (error) {
+      onFailure?.(error, { videoId });
+      const giveBack = async (counter: string, amount: number) =>
+        usage.giveBack(counter, month, amount).catch((e) => onFailure?.(e, { videoId }));
+      // A timed-out voice service may still have spoken (and charged) it.
+      if (characters && !(error instanceof DeadlineExceeded)) {
+        await giveBack(NATURAL_VOICE_CHARACTERS, characters);
+      }
+      if (claimed) await giveBack(claim, 1);
+      return { voice: "standard", reason: "natural-voice-unavailable" };
+    }
+  }
+
+  /** Another server is making this audio: wait a little for it to appear. */
+  async function waitForAudio(key: string): Promise<NarrationResult> {
+    for (let i = 0; i < CLAIM_WAIT_POLLS; i++) {
+      await new Promise((resolve) => setTimeout(resolve, CLAIM_WAIT_INTERVAL_MS));
+      const stored = await narrationAudio.findAudio(key);
+      if (stored) return { voice: "natural", audioUrl: stored };
+    }
+    return { voice: "standard", reason: "natural-voice-unavailable" };
+  }
+
+  /** How many Natural voice characters are left this month, and when it resets. */
+  async function naturalVoiceAllowance(): Promise<NaturalVoiceAllowance> {
+    const now = clock.now();
+    const used = await usage.used(NATURAL_VOICE_CHARACTERS, utcMonth(now));
+    return { charactersLeft: Math.max(0, naturalVoiceMonthlyCharacters - used), resetsAt: nextUtcMonth(now) };
+  }
+
   return {
     requestSummary,
+    requestNarration,
+    naturalVoiceAllowance,
     recordOpened,
     listHistory,
     removeFromHistory,
@@ -531,6 +680,15 @@ export type Core = ReturnType<typeof createCore>;
 
 function utcDay(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/** The month's counter key: its first day as a date ("2026-11-01"). */
+function utcMonth(date: Date): string {
+  return `${date.toISOString().slice(0, 7)}-01`;
+}
+
+function nextUtcMonth(date: Date): string {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)).toISOString();
 }
 
 function nextUtcMidnight(date: Date): string {

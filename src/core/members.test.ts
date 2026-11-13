@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createCore } from "./core";
 import {
+  FakeNaturalVoice,
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
   InMemoryHistoryStore,
   InMemoryMemberStore,
+  InMemoryNarrationAudioStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   fixedClock,
@@ -20,7 +22,7 @@ function setup() {
     store: new InMemorySummaryStore(),
     usage: new InMemoryUsageCounters(),
     members,
-    history: new InMemoryHistoryStore(),
+    history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
     clock: fixedClock("2026-11-13T10:00:00.000Z"),
   });
   return { core, members };

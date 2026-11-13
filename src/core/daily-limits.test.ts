@@ -3,11 +3,13 @@ import { createCore, type UsageLimits } from "./core";
 import type { Requester } from "./requester";
 import {
   ControllableClock,
+  FakeNaturalVoice,
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
   InMemoryHistoryStore,
   InMemoryMemberStore,
+  InMemoryNarrationAudioStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   validEngineOutput,
@@ -39,7 +41,7 @@ function setup(limits: Partial<UsageLimits> = {}) {
     engine,
     catalog,
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
     clock,
     limits: { ...LIMITS, ...limits },
   });
@@ -148,7 +150,7 @@ describe("Guest daily limits", () => {
       engine,
       catalog: new FakeVideoCatalog(),
       store,
-      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
       clock: new ControllableClock(),
       limits: LIMITS,
     });
@@ -209,7 +211,7 @@ describe("Usage counter failures", () => {
       catalog: new FakeVideoCatalog(),
       store: new InMemorySummaryStore(),
       usage,
-      members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+      members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
       clock: new ControllableClock(),
       limits: LIMITS,
     });
@@ -296,7 +298,7 @@ describe("App capacity", () => {
         catalog: new FakeVideoCatalog(),
         store: new InMemorySummaryStore(),
         usage,
-        members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+        members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
         clock: new ControllableClock(),
         limits: { ...LIMITS, dailyVideoMinutes: 5 },
         generationTimeoutMs: 1000,

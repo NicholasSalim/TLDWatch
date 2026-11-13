@@ -98,6 +98,26 @@ export interface HistoryStore {
   removeEntry(memberId: string, videoId: string): Promise<void>;
 }
 
+export interface NaturalVoice {
+  /**
+   * The voices Members may choose from for a language (BCP-47, e.g. "ko"),
+   * native speakers where there are some; the first is the default.
+   */
+  voicesFor(languageCode: string): string[];
+  /** The model speaking them, so changing it never replays old audio. */
+  readonly model: string;
+  /** Speaks text in a language (BCP-47, e.g. "ko") in a voice, and returns the MP3 audio. */
+  synthesize(text: string, languageCode: string, voiceId: string): Promise<Uint8Array>;
+}
+
+/** Natural voice audio, stored once per (video, language, Length) and reused by everyone. */
+export interface NarrationAudioStore {
+  /** The public URL of stored audio, or null if there's none yet. */
+  findAudio(key: string): Promise<string | null>;
+  /** Stores the audio (keeping any already there) and returns its public URL. */
+  saveAudio(key: string, mp3: Uint8Array): Promise<string>;
+}
+
 export interface Clock {
   now(): Date;
 }

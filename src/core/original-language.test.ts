@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createCore } from "./core";
 import type { Requester } from "./requester";
 import {
+  FakeNaturalVoice,
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
   InMemoryHistoryStore,
   InMemoryMemberStore,
+  InMemoryNarrationAudioStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   fakeTranslation,
@@ -25,7 +27,7 @@ function setup(spokenLanguage = "ko") {
     translator,
     catalog: new FakeVideoCatalog(),
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
     clock: fixedClock(),
   });
   return { core, engine, translator };
@@ -137,7 +139,7 @@ describe("original-language Summaries", () => {
         translator,
         catalog: new FakeVideoCatalog(),
         store: new InMemorySummaryStore(),
-        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
         clock: fixedClock(),
         translationTimeoutMs: 20_000,
       });

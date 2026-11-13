@@ -3,11 +3,13 @@ import { createCore } from "./core";
 import type { Requester } from "./requester";
 import {
   ControllableClock,
+  FakeNaturalVoice,
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
   InMemoryHistoryStore,
   InMemoryMemberStore,
+  InMemoryNarrationAudioStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   validEngineOutput,
@@ -30,7 +32,7 @@ function setup() {
     store: new InMemorySummaryStore(),
     usage: new InMemoryUsageCounters(),
     members: new InMemoryMemberStore(),
-    history: new InMemoryHistoryStore(),
+    history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
     clock,
   });
   return { core, clock, engine };
@@ -128,6 +130,8 @@ describe("History", () => {
       usage: new InMemoryUsageCounters(),
       members: new InMemoryMemberStore(),
       history,
+      voice: new FakeNaturalVoice(),
+      narrationAudio: new InMemoryNarrationAudioStore(),
       clock: new ControllableClock(),
     });
     const videos = Array.from({ length: 53 }, (_, i) => `video${String(i).padStart(6, "0")}`);
@@ -157,6 +161,8 @@ describe("History", () => {
       usage: new InMemoryUsageCounters(),
       members: new InMemoryMemberStore(),
       history,
+      voice: new FakeNaturalVoice(),
+      narrationAudio: new InMemoryNarrationAudioStore(),
       clock: new ControllableClock(),
     });
     await core.requestSummary({ videoUrl: url(B), requester: member });
@@ -178,6 +184,8 @@ describe("History", () => {
       usage: new InMemoryUsageCounters(),
       members: new InMemoryMemberStore(),
       history,
+      voice: new FakeNaturalVoice(),
+      narrationAudio: new InMemoryNarrationAudioStore(),
       clock: new ControllableClock(),
     });
     await history.recordOpened({ memberId: "m-1", videoId: A, language: "english", openedAt: "2026-11-13T10:00:00.000Z" });
