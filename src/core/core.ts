@@ -5,6 +5,7 @@
 import { DURATION_LIMIT_MINUTES } from "./limits";
 import { narrationScript } from "./narration";
 import type {
+  UploadStorage,
   Clock,
   NarrationAudioStore,
   NaturalVoice,
@@ -32,6 +33,7 @@ import {
   type Summary,
   type SummaryLanguage,
 } from "./summary";
+import { isUploadId } from "./upload-id";
 import { isVideoId, parseVideoUrl, type VideoUrlRejection } from "./video-url";
 
 export type UsageLimits = {
@@ -62,7 +64,12 @@ export type CoreDeps = {
   history: HistoryStore;
   voice: NaturalVoice;
   narrationAudio: NarrationAudioStore;
+  uploads: UploadStorage;
   clock: Clock;
+  /** Makes Upload ids; a random UUID unless a test supplies its own. */
+  newId?: () => string;
+  /** The largest Upload accepted, in megabytes. */
+  uploadMaxMb?: number;
   /** Other languages Members may read a Summary in, as base codes ("id", "es"). */
   summaryLanguages?: string[];
   /** Natural voice characters the whole app may use per calendar month. */
@@ -95,7 +102,9 @@ export type SummaryRejection =
         | "video-not-finished"
         | "summary-failed"
         | "language-members-only"
-        | "language-not-offered";
+        | "language-not-offered"
+        | "upload-members-only"
+        | "upload-not-found";
     }
   | {
       status: "rejected";
@@ -135,12 +144,24 @@ export type NarrationResult =
   | { voice: "natural"; audioUrl: string }
   | {
       voice: "standard";
-      reason: "guest" | "allowance-used-up" | "natural-voice-unavailable" | "no-summary";
+      reason:
+        | "guest"
+        | "allowance-used-up"
+        | "natural-voice-unavailable"
+        | "no-summary"
+        | "upload-not-eligible";
     };
 
 export type NaturalVoiceAllowance = { charactersLeft: number; resetsAt: string };
 
 const NATURAL_VOICE_CHARACTERS = "app:natural-voice-characters";
+
+/**
+ * A last-resort limit on sending a file to the engine, waiting for it to be
+ * processed and reading it. The engine's own limits finish well before this, so
+ * it can always delete its copy; this sits just inside the route's 5 minutes.
+ */
+const UPLOAD_TIMEOUT_MS = 280_000;
 
 /** Making one audio may take this long, inside the narration route's 60 seconds. */
 const SYNTHESIS_TIMEOUT_MS = 30_000;
@@ -159,6 +180,36 @@ export type HistoryItem = {
   /** The Short overview, to recognise the video by. */
   preview: string;
 };
+
+export type UploadStart =
+  | { status: "ready"; uploadId: string; uploadUrl: string }
+  | { status: "rejected"; reason: "upload-members-only" | "upload-not-a-video" }
+  | { status: "rejected"; reason: "upload-too-large"; limitMb: number }
+  | { status: "rejected"; reason: "video-too-long"; limitMinutes: number }
+  | { status: "rejected"; reason: "daily-limit-reached"; resetsAt: string };
+
+/** Video formats the engine can read, as browsers name them. */
+const UPLOAD_VIDEO_TYPES = new Set([
+  "video/mp4",
+  "video/mpeg",
+  "video/quicktime",
+  "video/mov",
+  "video/webm",
+  "video/x-msvideo",
+  "video/avi",
+  "video/x-flv",
+  "video/x-ms-wmv",
+  "video/wmv",
+  "video/3gpp",
+]);
+
+/** How long an uploaded file may wait to be summarized before it's swept away. */
+const ABANDONED_UPLOAD_MS = 60 * 60 * 1000;
+
+/** Where a Member's Upload waits: their own folder, so nobody else can name it. */
+function uploadPath(memberId: string, uploadId: string): string {
+  return `${memberId}/${uploadId}`;
+}
 
 export type JoinResult =
   | { status: "member"; member: Member }
@@ -191,7 +242,11 @@ export function createCore({
   history,
   voice,
   narrationAudio,
+  uploads,
   clock,
+  newId = () => globalThis.crypto.randomUUID(),
+  // Supabase Storage's largest file on the free plan; well within the engine's own limit.
+  uploadMaxMb = 50,
   // Below ElevenLabs' free 10,000 credits a month.
   naturalVoiceMonthlyCharacters = 8_000,
   limits = DEFAULT_LIMITS,
@@ -385,6 +440,8 @@ export function createCore({
         spokenLanguage,
         lengths: keepStructure(english.lengths, translationSchema.parse(raw)),
         createdAt: clock.now().toISOString(),
+        // A translation of an Upload Summary is just as private.
+        ...(english.ownerId && { ownerId: english.ownerId }),
       });
     } catch (error) {
       onFailure?.(error, { videoId });
@@ -481,6 +538,8 @@ export function createCore({
     if (!isVideoId(shareId)) return null;
     const language = normalizeLanguage(requested);
     const found = await store.findSummary(shareId, language);
+    // Belt and braces: an Upload Summary is never shared.
+    if (found?.ownerId) return null;
     if (found || language === "english" || language === "original") return found;
     // The video's own language as a code ("ko" for a Korean video) is its original Summary.
     const english = await store.findSummary(shareId, "english");
@@ -531,10 +590,13 @@ export function createCore({
     videoId: string,
     requestedLanguage: string,
   ): Promise<void> {
-    if (requester.kind !== "member" || !isVideoId(videoId)) return;
+    if (requester.kind !== "member") return;
+    if (!isVideoId(videoId) && !isUploadId(videoId)) return;
     const language = normalizeLanguage(requestedLanguage);
     try {
-      if (!(await store.findSummary(videoId, language))) return;
+      const summary = await store.findSummary(videoId, language);
+      // Only the owner's History may hold an Upload.
+      if (!summary || (summary.ownerId && summary.ownerId !== requester.memberId)) return;
       await remember(requester.memberId, videoId, language);
     } catch (error) {
       onFailure?.(error, { videoId });
@@ -607,6 +669,8 @@ export function createCore({
     naturalVoiceId,
   }: NarrationRequest): Promise<NarrationResult> {
     if (requester.kind !== "member") return { voice: "standard", reason: "guest" };
+    // Natural voice audio is public, and an Upload Summary is private.
+    if (isUploadId(videoId)) return { voice: "standard", reason: "upload-not-eligible" };
     if (!isVideoId(videoId)) return { voice: "standard", reason: "no-summary" };
 
     const language = normalizeLanguage(requestedLanguage);
@@ -700,7 +764,146 @@ export function createCore({
     return { charactersLeft: Math.max(0, naturalVoiceMonthlyCharacters - used), resetsAt: nextUtcMonth(now) };
   }
 
+  /**
+   * Starts an Upload for a Member: checks the file before anything is sent,
+   * then gives a one-time URL in their own private folder to upload it to.
+   */
+  async function startUpload(
+    requester: Requester,
+    file: { sizeBytes: number; durationSeconds: number; mimeType: string },
+  ): Promise<UploadStart> {
+    if (requester.kind !== "member") return { status: "rejected", reason: "upload-members-only" };
+    if (!UPLOAD_VIDEO_TYPES.has(file.mimeType.toLowerCase())) {
+      return { status: "rejected", reason: "upload-not-a-video" };
+    }
+    if (file.sizeBytes > uploadMaxMb * 1024 * 1024) {
+      return { status: "rejected", reason: "upload-too-large", limitMb: uploadMaxMb };
+    }
+    const limitMinutes = DURATION_LIMIT_MINUTES.member;
+    if (file.durationSeconds > limitMinutes * 60) {
+      return { status: "rejected", reason: "video-too-long", limitMinutes };
+    }
+    // Say so now, not after they've waited for a 50 MB upload.
+    const left = await summariesLeftToday(requester);
+    if (left.left === 0) {
+      return { status: "rejected", reason: "daily-limit-reached", resetsAt: left.resetsAt };
+    }
+    const uploadId = `upload-${newId()}`;
+    const uploadUrl = await uploads.createUploadUrl(uploadPath(requester.memberId, uploadId));
+    return { status: "ready", uploadId, uploadUrl };
+  }
+
+  /**
+   * Summarizes a Member's uploaded file privately, then deletes it, whether
+   * that worked or not. It counts toward their daily Summaries only if it worked.
+   */
+  // Uploads being summarized in this process, so a repeated request joins the first.
+  const summarizingUploads = new Map<string, Promise<SummaryResult>>();
+
+  function summarizeUpload(requester: Requester, uploadId: string): Promise<SummaryResult> {
+    if (requester.kind !== "member") {
+      return Promise.resolve({ status: "rejected", reason: "upload-members-only" });
+    }
+    if (!isUploadId(uploadId)) return Promise.resolve({ status: "rejected", reason: "upload-not-found" });
+    const path = uploadPath(requester.memberId, uploadId);
+    let pending = summarizingUploads.get(path);
+    if (!pending) {
+      pending = summarizeUploadOnce(requester.memberId, uploadId, path).finally(() =>
+        summarizingUploads.delete(path),
+      );
+      summarizingUploads.set(path, pending);
+    }
+    return pending;
+  }
+
+  async function summarizeUploadOnce(
+    memberId: string,
+    uploadId: string,
+    path: string,
+  ): Promise<SummaryResult> {
+    const member: Requester = { kind: "member", memberId };
+    const now = clock.now();
+    const day = utcDay(now);
+    const counters = summaryCounters(member);
+    let reserved = false;
+    try {
+      // Already summarized (the same URL used again): give that back, uncounted.
+      const existing = await store.findSummary(uploadId, SUMMARY_LANGUAGE);
+      if (existing?.ownerId === memberId) return { status: "ready", summary: existing };
+
+      const file = await uploads.read(path);
+      if (!file) return { status: "rejected", reason: "upload-not-found" };
+
+      if (!(await reserveAll(counters, day, uploadId))) {
+        return { status: "rejected", reason: "daily-limit-reached", resetsAt: nextUtcMidnight(now) };
+      }
+      reserved = true;
+
+      const limitMinutes = DURATION_LIMIT_MINUTES.member;
+      const read = await withDeadline(engine.summarizeVideoFile(file, limitMinutes * 60), UPLOAD_TIMEOUT_MS);
+      if (read.kind === "too-long") {
+        await giveBackAll(counters, day, uploadId);
+        reserved = false;
+        return { status: "rejected", reason: "video-too-long", limitMinutes };
+      }
+      const output = engineOutputSchema.parse(read.output);
+      const summary = await store.saveSummary({
+        videoId: uploadId,
+        language: SUMMARY_LANGUAGE,
+        spokenLanguage: output.spokenLanguage,
+        lengths: output.lengths,
+        createdAt: clock.now().toISOString(),
+        ownerId: memberId,
+      });
+      await remember(memberId, uploadId, summary.language).catch((error) =>
+        onFailure?.(error, { videoId: uploadId }),
+      );
+      return { status: "ready", summary };
+    } catch (error) {
+      onFailure?.(error, { videoId: uploadId });
+      if (reserved) await giveBackAll(counters, day, uploadId);
+      return { status: "rejected", reason: "summary-failed" };
+    } finally {
+      // The file is never kept, whatever happened.
+      await uploads.remove(path).catch((error) => onFailure?.(error, { videoId: uploadId }));
+    }
+  }
+
+  /** Deletes uploaded files nobody asked to summarize within the hour (a closed tab, say). */
+  async function sweepAbandonedUploads(): Promise<number> {
+    const cutoff = new Date(clock.now().getTime() - ABANDONED_UPLOAD_MS).toISOString();
+    return uploads.removeOlderThan(cutoff);
+  }
+
+  /**
+   * An Upload Summary, for its owner only, in English, the original language,
+   * or another offered language (translated once, and just as private).
+   */
+  async function readUploadSummary(
+    requester: Requester,
+    uploadId: string,
+    requested: string = "english",
+  ): Promise<{ summary: Summary; translationFailed: boolean } | null> {
+    if (requester.kind !== "member" || !isUploadId(uploadId)) return null;
+    const english = await store.findSummary(uploadId, SUMMARY_LANGUAGE);
+    if (!english || english.ownerId !== requester.memberId) return null;
+    const language = normalizeLanguage(requested);
+    if (language === "english") return { summary: english, translationFailed: false };
+    if (language !== "original" && !summaryLanguages.includes(language)) {
+      return { summary: english, translationFailed: true };
+    }
+    const translated = await translateOnce(english, language);
+    return translated
+      ? { summary: translated, translationFailed: false }
+      : { summary: english, translationFailed: true };
+  }
+
+
   return {
+    startUpload,
+    summarizeUpload,
+    readUploadSummary,
+    sweepAbandonedUploads,
     requestSummary,
     requestNarration,
     naturalVoiceAllowance,

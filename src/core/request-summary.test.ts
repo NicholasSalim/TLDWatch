@@ -10,6 +10,7 @@ import {
   InMemoryMemberStore,
   InMemoryNarrationAudioStore,
   InMemorySummaryStore,
+  InMemoryUploadStorage,
   InMemoryUsageCounters,
   fixedClock,
   validEngineOutput,
@@ -20,7 +21,7 @@ const guest: Requester = { kind: "guest", guestId: "guest-1", ipHash: "ip-1" };
 
 function setup(engine = new FakeSummaryEngine()) {
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(), clock: fixedClock() });
   return { core, engine, store };
 }
 
@@ -90,7 +91,7 @@ describe("requestSummary", () => {
       engine,
       catalog: new FakeVideoCatalog(),
       store: slowFirstLookups,
-      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
       clock: fixedClock(),
     });
 
@@ -116,7 +117,7 @@ describe("requestSummary", () => {
         engine,
         catalog: new FakeVideoCatalog(),
         store,
-        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
         clock: fixedClock(),
         generationTimeoutMs: 90_000,
       });
@@ -144,7 +145,7 @@ describe("requestSummary", () => {
       engine: new FakeSummaryEngine(),
       catalog: new FakeVideoCatalog(),
       store,
-      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
       clock: fixedClock(),
     });
 

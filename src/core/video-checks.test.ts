@@ -10,6 +10,7 @@ import {
   InMemoryMemberStore,
   InMemoryNarrationAudioStore,
   InMemorySummaryStore,
+  InMemoryUploadStorage,
   InMemoryUsageCounters,
   fixedClock,
 } from "./testing";
@@ -23,7 +24,7 @@ function setup() {
   const engine = new FakeSummaryEngine();
   const catalog = new FakeVideoCatalog();
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, translator: new FakeTranslator(), catalog, store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog, store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(), clock: fixedClock() });
   return { core, engine, catalog, store };
 }
 

@@ -11,6 +11,31 @@ export interface SummaryEngine {
    * is untrusted: the core validates it before use.
    */
   summarizeYouTubeVideo(videoId: string): Promise<unknown>;
+  /**
+   * Reads an uploaded video file the same way. It refuses, without summarizing,
+   * a video longer than `maxDurationSeconds`. Cleans up after itself either way.
+   */
+  summarizeVideoFile(
+    video: UploadedVideo,
+    maxDurationSeconds: number,
+  ): Promise<{ kind: "too-long" } | { kind: "read"; output: unknown }>;
+}
+
+/** An uploaded video file, as the engine reads it. */
+export type UploadedVideo = { bytes: Uint8Array; mimeType: string };
+
+/**
+ * Private storage for Uploads while they're summarized. A path is
+ * "<memberId>/<uploadId>", so a Member can only ever reach their own.
+ */
+export interface UploadStorage {
+  /** A short-lived URL the Member's browser uploads the file to, directly. */
+  createUploadUrl(path: string): Promise<string>;
+  /** The uploaded file, or null if there's none at that path. */
+  read(path: string): Promise<UploadedVideo | null>;
+  remove(path: string): Promise<void>;
+  /** Deletes every file uploaded before `cutoff` (an ISO time); returns how many. */
+  removeOlderThan(cutoff: string): Promise<number>;
 }
 
 export interface SummaryStore {

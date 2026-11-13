@@ -13,9 +13,10 @@ type SummaryRow = {
   spoken_language: string;
   lengths: Summary["lengths"];
   created_at: string;
+  owner_id: string | null;
 };
 
-const COLUMNS = "video_id, language, spoken_language, lengths, created_at";
+const COLUMNS = "video_id, language, spoken_language, lengths, created_at, owner_id";
 
 const fromRow = (row: SummaryRow): Summary => ({
   videoId: row.video_id,
@@ -23,6 +24,7 @@ const fromRow = (row: SummaryRow): Summary => ({
   spokenLanguage: row.spoken_language,
   lengths: row.lengths,
   createdAt: row.created_at,
+  ...(row.owner_id && { ownerId: row.owner_id }),
 });
 
 export function createSupabaseSummaryStore({
@@ -71,6 +73,7 @@ export function createSupabaseSummaryStore({
           spoken_language: summary.spokenLanguage,
           lengths: summary.lengths,
           created_at: summary.createdAt,
+          owner_id: summary.ownerId ?? null,
         },
         { onConflict: "video_id,language", ignoreDuplicates: true },
       );

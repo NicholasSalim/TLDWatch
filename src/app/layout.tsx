@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import { SignInDialog } from "@/components/sign-in-dialog";
+import { UploadDialog } from "@/components/upload-dialog";
 import "./globals.css";
 
 const bricolage = Bricolage_Grotesque({
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         {children}
         <SignInDialog />
+        <UploadDialog />
       </body>
     </html>
   );

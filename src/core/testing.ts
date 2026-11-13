@@ -4,6 +4,8 @@
  */
 import type { Length, LengthContent } from "./summary";
 import type {
+  UploadStorage,
+  UploadedVideo,
   Clock,
   NarrationAudioStore,
   NaturalVoice,
@@ -66,6 +68,18 @@ export class FakeSummaryEngine implements SummaryEngine {
       await new Promise<void>((resolve) => this.pending.push(resolve));
     }
     return this.respond(videoId);
+  }
+
+  /** Files it was given, and what to answer: a video's length decides "too-long". */
+  fileCalls: UploadedVideo[] = [];
+  fileDurationSeconds = 120;
+  failFiles = false;
+
+  async summarizeVideoFile(video: UploadedVideo, maxDurationSeconds: number) {
+    this.fileCalls.push(video);
+    if (this.failFiles) throw new Error("engine couldn't read the file");
+    if (this.fileDurationSeconds > maxDurationSeconds) return { kind: "too-long" as const };
+    return { kind: "read" as const, output: this.respond("upload") };
   }
 
   /** In manual mode, lets every waiting call finish. */
@@ -213,6 +227,41 @@ export class InMemoryNarrationAudioStore implements NarrationAudioStore {
   async saveAudio(key: string, mp3: Uint8Array) {
     if (!this.audio.has(key)) this.audio.set(key, mp3);
     return `https://audio.test/${key}`;
+  }
+}
+
+export class InMemoryUploadStorage implements UploadStorage {
+  files = new Map<string, UploadedVideo>();
+  uploadedAt = new Map<string, string>();
+  removed: string[] = [];
+
+  async removeOlderThan(cutoff: string) {
+    const old = [...this.files.keys()].filter((path) => (this.uploadedAt.get(path) ?? "") < cutoff);
+    for (const path of old) await this.remove(path);
+    return old.length;
+  }
+
+  async createUploadUrl(path: string) {
+    return `https://uploads.test/${path}?token=one-time`;
+  }
+
+  /** What the Member's browser does with the URL. */
+  put(
+    path: string,
+    video: UploadedVideo = { bytes: new Uint8Array([1, 2, 3]), mimeType: "video/mp4" },
+    at = "2026-11-12T10:00:00.000Z",
+  ) {
+    this.files.set(path, video);
+    this.uploadedAt.set(path, at);
+  }
+
+  async read(path: string) {
+    return this.files.get(path) ?? null;
+  }
+
+  async remove(path: string) {
+    this.files.delete(path);
+    this.removed.push(path);
   }
 }
 

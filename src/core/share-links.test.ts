@@ -10,6 +10,7 @@ import {
   InMemoryMemberStore,
   InMemoryNarrationAudioStore,
   InMemorySummaryStore,
+  InMemoryUploadStorage,
   InMemoryUsageCounters,
   fixedClock,
 } from "./testing";
@@ -25,7 +26,7 @@ function setup() {
     engine,
     catalog,
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
     clock: fixedClock(),
   });
   return { core, engine, catalog };

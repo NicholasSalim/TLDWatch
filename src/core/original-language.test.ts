@@ -10,6 +10,7 @@ import {
   InMemoryMemberStore,
   InMemoryNarrationAudioStore,
   InMemorySummaryStore,
+  InMemoryUploadStorage,
   InMemoryUsageCounters,
   fakeTranslation,
   fixedClock,
@@ -27,7 +28,7 @@ function setup(spokenLanguage = "ko") {
     translator,
     catalog: new FakeVideoCatalog(),
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
     clock: fixedClock(),
   });
   return { core, engine, translator };
@@ -139,7 +140,7 @@ describe("original-language Summaries", () => {
         translator,
         catalog: new FakeVideoCatalog(),
         store: new InMemorySummaryStore(),
-        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
         clock: fixedClock(),
         translationTimeoutMs: 20_000,
       });

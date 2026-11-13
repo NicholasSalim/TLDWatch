@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { Film, X } from "lucide-react";
 import type { HistoryItem } from "@/core/core";
-import { sharePath } from "@/core/share";
+import { summaryPath } from "@/core/share";
+import { isUploadId } from "@/core/upload-id";
 import { openSignIn, useMe } from "@/lib/me";
 
 type State =
@@ -130,17 +131,27 @@ export function HistoryList() {
             key={item.videoId}
             className="group relative flex items-center gap-3 rounded-2xl border border-white/10 bg-white/4 p-3 transition-colors hover:bg-white/6"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail */}
-            <img
-              src={`https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`}
-              alt=""
-              width={112}
-              height={63}
-              className="aspect-video w-24 shrink-0 rounded-lg object-cover sm:w-28"
-            />
+            {isUploadId(item.videoId) ? (
+              // An Upload has no thumbnail online.
+              <div
+                aria-hidden
+                className="grid aspect-video w-24 shrink-0 place-items-center rounded-lg bg-white/8 text-haze sm:w-28"
+              >
+                <Film className="size-5" />
+              </div>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail
+              <img
+                src={`https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`}
+                alt=""
+                width={112}
+                height={63}
+                className="aspect-video w-24 shrink-0 rounded-lg object-cover sm:w-28"
+              />
+            )}
             <div className="min-w-0 flex-1">
               <Link
-                href={sharePath(item.videoId, item.language)}
+                href={summaryPath(item.videoId, item.language)}
                 className="line-clamp-2 text-pretty text-sm leading-snug text-mist after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none"
               >
                 {item.preview}
@@ -204,7 +215,7 @@ function Skeleton() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="h-[88px] animate-pulse rounded-2xl border border-white/10 bg-white/4"
+          className="h-22 animate-pulse rounded-2xl border border-white/10 bg-white/4"
         />
       ))}
     </div>

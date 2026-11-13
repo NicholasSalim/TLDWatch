@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Link2, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-react";
+import { Check, Film, Link2, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-react";
 import {
   isEnglish,
   LENGTH_LABELS,
@@ -13,12 +13,24 @@ import {
   type SummaryLanguage,
 } from "@/core/summary";
 import { sharePath } from "@/core/share";
+import { isUploadId } from "@/core/upload-id";
 import { namesOf, type LanguageNames } from "@/lib/language-names";
 import { formatTimestamp, timestampUrl } from "@/core/timestamps";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
 
 function Thumbnail({ videoId }: { videoId: string }) {
+  // An Upload has no thumbnail online: a quiet placeholder instead.
+  if (isUploadId(videoId)) {
+    return (
+      <div
+        aria-hidden
+        className="grid aspect-video w-28 shrink-0 place-items-center rounded-lg bg-white/8 text-haze"
+      >
+        <Film className="size-6" />
+      </div>
+    );
+  }
   return (
     // eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail, no optimisation needed
     <img
@@ -129,7 +141,12 @@ export function SummaryView({
           <Thumbnail videoId={summary.videoId} />
           <div className="flex flex-col items-start gap-1">
             <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">Summary</h2>
-            <CopyLinkButton videoId={summary.videoId} language={summary.language} />
+            {/* An Upload Summary is private: no share link to leak it. */}
+            {summary.ownerId ? (
+              <p className="text-sm text-haze">Private to you</p>
+            ) : (
+              <CopyLinkButton videoId={summary.videoId} language={summary.language} />
+            )}
           </div>
         </div>
         <Segmented
@@ -212,6 +229,15 @@ export function SummaryView({
           <ol className="mt-2 space-y-0.5">
             {content.timestamps.map((t) => (
               <li key={`${t.seconds}-${t.label}`}>
+                {summary.ownerId ? (
+                  // No online video to jump to: plain times.
+                  <p className="-mx-2 flex items-baseline gap-3 px-2 py-1.5 text-sm">
+                    <span className="shrink-0 font-medium text-lumen tabular-nums">
+                      {formatTimestamp(t.seconds)}
+                    </span>
+                    <span className="text-pretty text-mist/90">{t.label}</span>
+                  </p>
+                ) : (
                 <a
                   href={timestampUrl(summary.videoId, t.seconds)}
                   target="_blank"
@@ -224,6 +250,7 @@ export function SummaryView({
                   <span className="text-pretty text-mist/90 group-hover:text-mist">{t.label}</span>
                   <span className="sr-only"> (opens YouTube at this moment)</span>
                 </a>
+                )}
               </li>
             ))}
           </ol>

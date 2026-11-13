@@ -101,9 +101,12 @@ export const translationSchema = z.object({
 export type Translation = z.infer<typeof translationSchema>;
 
 export type Summary = {
+  /** The Video: a YouTube video ID, or an Upload's id ("upload-…"). */
   videoId: string;
   language: SummaryLanguage;
   spokenLanguage: string;
   lengths: Record<Length, LengthContent>;
   createdAt: string;
+  /** An Upload Summary's owner: only they can read it. Absent for YouTube Summaries. */
+  ownerId?: string;
 };
