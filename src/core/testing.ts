@@ -2,8 +2,10 @@
  * Test doubles for the core's adapters: a Summary engine that counts calls,
  * an in-memory Store and a fixed Clock.
  */
+import type { Length, LengthContent } from "./summary";
 import type {
   Clock,
+  Translator,
   SummaryEngine,
   SummaryStore,
   UsageCounters,
@@ -61,6 +63,42 @@ export class FakeSummaryEngine implements SummaryEngine {
   }
 
   /** In manual mode, lets every waiting call finish. */
+  finish() {
+    this.pending.splice(0).forEach((resolve) => resolve());
+  }
+}
+
+/** Prefixes every text with the target language, e.g. "[ko] Intro". */
+export function fakeTranslation(lengths: Record<Length, LengthContent>, target: string) {
+  const t = (text: string) => `[${target}] ${text}`;
+  return Object.fromEntries(
+    Object.entries(lengths).map(([length, c]) => [
+      length,
+      {
+        overview: t(c.overview),
+        keyPoints: c.keyPoints.map(t),
+        timestamps: c.timestamps.map((s) => ({ ...s, label: t(s.label) })),
+        verdict: { ...c.verdict, explanation: t(c.verdict.explanation) },
+      },
+    ]),
+  );
+}
+
+export class FakeTranslator implements Translator {
+  calls: string[] = [];
+  private pending: (() => void)[] = [];
+  manual = false;
+
+  constructor(
+    public respond: (lengths: Record<Length, LengthContent>, target: string) => unknown = fakeTranslation,
+  ) {}
+
+  async translateSummary(lengths: Record<Length, LengthContent>, target: string) {
+    this.calls.push(target);
+    if (this.manual) await new Promise<void>((resolve) => this.pending.push(resolve));
+    return this.respond(lengths, target);
+  }
+
   finish() {
     this.pending.splice(0).forEach((resolve) => resolve());
   }

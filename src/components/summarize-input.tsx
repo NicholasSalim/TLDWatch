@@ -5,12 +5,13 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Headphones, Paperclip } from "lucide-react";
 import type { SummariesLeft, SummaryRejection } from "@/core/core";
-import type { SummaryResponse } from "@/lib/api-types";
 import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
+import { fetchSummary } from "@/lib/summary-client";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
-import { Summarizing, SummaryView } from "@/components/summary-view";
+import { SummaryCard } from "@/components/summary-card";
+import { Summarizing } from "@/components/summary-view";
 
 // Adapted from the 21st.dev "ai-chat-input" by preetsuthar17, reshaped for TLDWatch.
 
@@ -32,7 +33,7 @@ type Notice =
   | { kind: "error"; text: string }
   | { kind: "info"; text: string }
   | { kind: "summarizing"; videoId: string }
-  | { kind: "summary"; summary: Summary };
+  | { kind: "summary"; summary: Summary; translationFailed: boolean };
 
 const AUTOPLAY_KEY = "tldwatch:autoplay";
 
@@ -105,19 +106,6 @@ function whenLocal(iso: string): string {
   return `${sameDay ? "today" : "tomorrow"} at ${time}`;
 }
 
-async function fetchSummary(videoUrl: string): Promise<SummaryResponse> {
-  try {
-    const response = await fetch("/api/summaries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoUrl }),
-    });
-    return (await response.json()) as SummaryResponse;
-  } catch {
-    return { status: "rejected", reason: "summary-failed" };
-  }
-}
-
 export function SummarizeInput() {
   const reduceMotion = useReducedMotion();
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -181,12 +169,12 @@ export function SummarizeInput() {
     }
     const request = ++latestRequest.current;
     setNotice({ kind: "summarizing", videoId: parsed.videoId });
-    const result = await fetchSummary(value);
+    const result = await fetchSummary(value, language);
     if (result.summariesLeft) setSummariesLeft(result.summariesLeft);
     if (request !== latestRequest.current) return;
     setNotice(
       result.status === "ready"
-        ? { kind: "summary", summary: result.summary }
+        ? { kind: "summary", summary: result.summary, translationFailed: !!result.translationFailed }
         : { kind: "error", text: rejectionText(result) },
     );
   };
@@ -337,12 +325,14 @@ export function SummarizeInput() {
                 onChange={(v) => setLength(v as Length)}
               />
             )}
-            <Segmented
-              label="Summary language"
-              options={LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
-              value={language}
-              onChange={(v) => setLanguage(v as Language)}
-            />
+            {notice?.kind !== "summary" && (
+              <Segmented
+                label="Summary language"
+                options={LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
+                value={language}
+                onChange={(v) => setLanguage(v as Language)}
+              />
+            )}
             <button
               type="button"
               aria-pressed={autoplay}
@@ -377,11 +367,10 @@ export function SummarizeInput() {
               {notice.kind === "summarizing" ? (
                 <Summarizing videoId={notice.videoId} />
               ) : notice.kind === "summary" ? (
-                <SummaryView
-                  summary={notice.summary}
-                  length={length}
-                  onLengthChange={setLength}
-                  originalRequested={language === "original"}
+                <SummaryCard
+                  initial={notice.summary}
+                  initialLength={length}
+                  translationFailed={notice.translationFailed}
                 />
               ) : (
                 <p

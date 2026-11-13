@@ -3,6 +3,7 @@ import { createCore } from "./core";
 import type { Requester } from "./requester";
 import {
   FakeSummaryEngine,
+  FakeTranslator,
   FakeVideoCatalog,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -15,7 +16,7 @@ const guest: Requester = { kind: "guest", guestId: "guest-1", ipHash: "ip-1" };
 
 function setup(engine = new FakeSummaryEngine()) {
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), clock: fixedClock() });
   return { core, engine, store };
 }
 
@@ -81,6 +82,7 @@ describe("requestSummary", () => {
       return store.findSummary(videoId, language);
     };
     const core = createCore({
+      translator: new FakeTranslator(),
       engine,
       catalog: new FakeVideoCatalog(),
       store: slowFirstLookups,
@@ -106,6 +108,7 @@ describe("requestSummary", () => {
       const engine = new FakeSummaryEngine(undefined, { manual: true });
       const store = new InMemorySummaryStore();
       const core = createCore({
+        translator: new FakeTranslator(),
         engine,
         catalog: new FakeVideoCatalog(),
         store,
@@ -133,6 +136,7 @@ describe("requestSummary", () => {
       throw new Error("database unreachable");
     };
     const core = createCore({
+      translator: new FakeTranslator(),
       engine: new FakeSummaryEngine(),
       catalog: new FakeVideoCatalog(),
       store,

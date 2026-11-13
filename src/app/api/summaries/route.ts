@@ -7,16 +7,17 @@ export const maxDuration = 120;
 
 export async function POST(request: Request) {
   const body: unknown = await request.json().catch(() => null);
-  const videoUrl =
-    body && typeof body === "object" && "videoUrl" in body && typeof body.videoUrl === "string"
-      ? body.videoUrl
-      : "";
+  const field = (name: string): unknown =>
+    body && typeof body === "object" && name in body ? (body as Record<string, unknown>)[name] : undefined;
+  const rawUrl = field("videoUrl");
+  const videoUrl = typeof rawUrl === "string" ? rawUrl : "";
+  const language = field("language") === "original" ? "original" : "english";
 
   let response: SummaryResponse;
   try {
     // Everyone is a Guest until sign-in exists.
     const requester = await guestFrom(request);
-    const result = await getCore().requestSummary({ videoUrl, requester });
+    const result = await getCore().requestSummary({ videoUrl, requester, language });
     // A failed count must never turn a Summary into an error.
     const summariesLeft = await getCore()
       .summariesLeftToday(requester)
