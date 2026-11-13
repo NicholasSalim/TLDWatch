@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SummarizeInput } from "@/components/summarize-input";
 import { AccountMenu } from "@/components/account-menu";
 import { Wordmark } from "@/components/wordmark";
@@ -29,7 +30,14 @@ export default function Home() {
       </main>
 
       <footer className="mx-auto w-full max-w-5xl px-5 pb-6 text-center text-xs text-haze/70 sm:px-8">
-        Works with public YouTube videos. For ages 18 and over.
+        Works with public YouTube videos. For ages 18 and over.{" "}
+        <Link href="/terms" className="underline underline-offset-2 hover:text-mist">
+          Terms
+        </Link>
+        {" · "}
+        <Link href="/privacy" className="underline underline-offset-2 hover:text-mist">
+          Privacy
+        </Link>
       </footer>
     </div>
   );

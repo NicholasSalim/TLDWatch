@@ -869,6 +869,17 @@ export function createCore({
     }
   }
 
+  /**
+   * Deletes usage counts from before last month: daily limits only need today,
+   * and the Natural voice allowance this month. Keeps Guests' hashed IPs and
+   * cookie IDs from piling up.
+   */
+  async function sweepOldUsage(): Promise<void> {
+    const now = clock.now();
+    const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    await usage.forgetBefore(utcDay(lastMonth));
+  }
+
   /** Deletes uploaded files nobody asked to summarize within the hour (a closed tab, say). */
   async function sweepAbandonedUploads(): Promise<number> {
     const cutoff = new Date(clock.now().getTime() - ABANDONED_UPLOAD_MS).toISOString();
@@ -924,6 +935,7 @@ export function createCore({
     summarizeUpload,
     readUploadSummary,
     sweepAbandonedUploads,
+    sweepOldUsage,
     requestSummary,
     requestNarration,
     naturalVoiceAllowance,

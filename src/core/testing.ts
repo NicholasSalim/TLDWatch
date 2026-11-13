@@ -194,6 +194,12 @@ export class InMemoryUsageCounters implements UsageCounters {
     this.counts.set(`${counter}@${day}`, Math.max(0, used - amount));
   }
 
+  async forgetBefore(day: string) {
+    for (const key of [...this.counts.keys()]) {
+      if (key.split("@")[1] < day) this.counts.delete(key);
+    }
+  }
+
   async forget(counter: string) {
     for (const key of [...this.counts.keys()]) {
       if (key.startsWith(`${counter}@`)) this.counts.delete(key);

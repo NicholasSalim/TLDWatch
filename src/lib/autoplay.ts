@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { updateMember, useMe } from "@/lib/me";
-import { readPreference, writePreference } from "@/lib/speech";
+import { readPreference, writePreference } from "@/lib/preferences";
 
 /**
  * The "Autoplay Narration" setting. Off by default. A Member's setting is
