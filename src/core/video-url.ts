@@ -12,6 +12,11 @@ export type VideoUrlResult =
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
+/** Whether text is an 11-character YouTube video ID. */
+export function isVideoId(text: string): boolean {
+  return VIDEO_ID.test(text);
+}
+
 const YOUTUBE_HOSTS = new Set([
   "youtube.com",
   "www.youtube.com",

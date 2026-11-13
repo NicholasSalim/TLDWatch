@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-react";
+import { Check, Link2, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-react";
 import {
   LENGTH_LABELS,
   LENGTHS,
@@ -9,6 +9,7 @@ import {
   type LengthContent,
   type Summary,
 } from "@/core/summary";
+import { sharePath } from "@/core/share";
 import { formatTimestamp, timestampUrl } from "@/core/timestamps";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
@@ -85,7 +86,10 @@ export function SummaryView({
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="flex items-center gap-4">
           <Thumbnail videoId={summary.videoId} />
-          <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">Summary</h2>
+          <div className="flex flex-col items-start gap-1">
+            <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">Summary</h2>
+            <CopyLinkButton videoId={summary.videoId} />
+          </div>
         </div>
         <Segmented
           label="Summary length"
@@ -138,6 +142,54 @@ export function SummaryView({
         </>
       )}
     </article>
+  );
+}
+
+function CopyLinkButton({ videoId }: { videoId: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const [link, setLink] = useState("");
+
+  useEffect(() => {
+    if (state !== "copied") return;
+    const reset = setTimeout(() => setState("idle"), 2500);
+    return () => clearTimeout(reset);
+  }, [state]);
+
+  const copy = async () => {
+    const url = new URL(sharePath(videoId), window.location.origin).href;
+    setLink(url);
+    try {
+      await navigator.clipboard.writeText(url);
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+  };
+
+  // Clipboard blocked: show the link itself, so it can be copied by hand.
+  if (state === "failed") {
+    return (
+      <a href={link} className="text-sm break-all text-haze underline underline-offset-2">
+        {link}
+      </a>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="-mx-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-sm font-medium text-haze transition-colors hover:text-mist focus-visible:outline-2 focus-visible:outline-lumen"
+    >
+      {state === "copied" ? (
+        <Check className="size-4 text-positive" aria-hidden />
+      ) : (
+        <Link2 className="size-4" aria-hidden />
+      )}
+      <span aria-live="polite">
+        {state === "copied" ? "Link copied" : "Copy link"}
+      </span>
+    </button>
   );
 }
 
