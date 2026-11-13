@@ -5,6 +5,8 @@
 import type { Length, LengthContent } from "./summary";
 import type {
   Clock,
+  NarrationAudioStore,
+  NaturalVoice,
   HistoryEntry,
   HistoryStore,
   Member,
@@ -158,10 +160,12 @@ export class FakeVideoCatalog implements VideoCatalog {
 export class InMemoryUsageCounters implements UsageCounters {
   private counts = new Map<string, number>();
 
+  // Atomic, like the database: no await between checking and adding.
   async tryUse(counter: string, day: string, amount: number, limit: number) {
-    const used = await this.used(counter, day);
+    const key = `${counter}@${day}`;
+    const used = this.counts.get(key) ?? 0;
     if (used + amount > limit) return false;
-    this.counts.set(`${counter}@${day}`, used + amount);
+    this.counts.set(key, used + amount);
     return true;
   }
 
@@ -172,6 +176,43 @@ export class InMemoryUsageCounters implements UsageCounters {
 
   async used(counter: string, day: string) {
     return this.counts.get(`${counter}@${day}`) ?? 0;
+  }
+}
+
+export class FakeNaturalVoice implements NaturalVoice {
+  /** English has two voices, Korean one; any other language falls back to "voice-a". */
+  voicesFor(languageCode: string) {
+    const base = languageCode.split("-")[0];
+    return base === "en" ? ["voice-a", "voice-b"] : base === "ko" ? ["voice-ko"] : ["voice-a"];
+  }
+  readonly model = "test-model";
+  calls: { text: string; languageCode: string; voiceId: string }[] = [];
+  failing = false;
+  manual = false;
+  private pending: (() => void)[] = [];
+
+  async synthesize(text: string, languageCode: string, voiceId: string) {
+    this.calls.push({ text, languageCode, voiceId });
+    if (this.manual) await new Promise<void>((resolve) => this.pending.push(resolve));
+    if (this.failing) throw new Error("voice service unavailable");
+    return new TextEncoder().encode(`mp3:${languageCode}:${text.slice(0, 20)}`);
+  }
+
+  finish() {
+    this.pending.splice(0).forEach((resolve) => resolve());
+  }
+}
+
+export class InMemoryNarrationAudioStore implements NarrationAudioStore {
+  audio = new Map<string, Uint8Array>();
+
+  async findAudio(key: string) {
+    return this.audio.has(key) ? `https://audio.test/${key}` : null;
+  }
+
+  async saveAudio(key: string, mp3: Uint8Array) {
+    if (!this.audio.has(key)) this.audio.set(key, mp3);
+    return `https://audio.test/${key}`;
   }
 }
 

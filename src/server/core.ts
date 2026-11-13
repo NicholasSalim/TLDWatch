@@ -5,15 +5,20 @@
  * (a bad Video URL) never depends on service configuration.
  */
 import "server-only";
+import { createElevenLabsNaturalVoice } from "@/adapters/elevenlabs-natural-voice";
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createGeminiTranslator } from "@/adapters/gemini-translator";
 import { createSupabaseHistoryStore } from "@/adapters/supabase-history-store";
+import { naturalVoiceSettings } from "@/server/natural-voices";
 import { createSupabaseMemberStore } from "@/adapters/supabase-member-store";
+import { createSupabaseNarrationAudioStore } from "@/adapters/supabase-narration-audio-store";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
 import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
 import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
 import type {
+  NarrationAudioStore,
+  NaturalVoice,
   HistoryStore,
   MemberStore,
   SummaryEngine,
@@ -71,6 +76,17 @@ const history = once(() =>
   }),
 );
 
+const naturalVoice = once(() =>
+  createElevenLabsNaturalVoice({ apiKey: requireEnv("ELEVENLABS_API_KEY"), ...naturalVoiceSettings() }),
+);
+
+const narrationAudio = once(() =>
+  createSupabaseNarrationAudioStore({
+    url: requireEnv("SUPABASE_URL"),
+    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  }),
+);
+
 /** Limits come from the environment, falling back to the core's defaults. */
 function limitsFromEnv(): UsageLimits {
   return {
@@ -115,6 +131,20 @@ export const getCore: () => Core = once(() =>
       listHistory: (memberId, limit, before) => history().listHistory(memberId, limit, before),
       removeEntry: (memberId, videoId) => history().removeEntry(memberId, videoId),
     } satisfies HistoryStore,
+    voice: {
+      // Read from settings, so the API key is only needed to actually speak.
+      voicesFor: (languageCode) => naturalVoiceSettings().voicesFor(languageCode),
+      get model() {
+        return naturalVoiceSettings().model;
+      },
+      synthesize: (text, languageCode, voiceId) =>
+        naturalVoice().synthesize(text, languageCode, voiceId),
+    } satisfies NaturalVoice,
+    narrationAudio: {
+      findAudio: (key) => narrationAudio().findAudio(key),
+      saveAudio: (key, mp3) => narrationAudio().saveAudio(key, mp3),
+    } satisfies NarrationAudioStore,
+    naturalVoiceMonthlyCharacters: intEnv("NATURAL_VOICE_MONTHLY_CHARACTERS", 8_000),
     clock: { now: () => new Date() },
     limits: limitsFromEnv(),
     onFailure: (error, { videoId }) =>

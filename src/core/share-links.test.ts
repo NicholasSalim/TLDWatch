@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { createCore } from "./core";
 import type { Requester } from "./requester";
 import {
+  FakeNaturalVoice,
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
   InMemoryHistoryStore,
   InMemoryMemberStore,
+  InMemoryNarrationAudioStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   fixedClock,
@@ -23,7 +25,7 @@ function setup() {
     engine,
     catalog,
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
     clock: fixedClock(),
   });
   return { core, engine, catalog };
