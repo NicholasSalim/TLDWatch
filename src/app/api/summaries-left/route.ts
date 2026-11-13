@@ -1,10 +1,10 @@
 import { getCore } from "@/server/core";
-import { guestFrom } from "@/server/guest-identity";
+import { requesterFrom } from "@/server/auth";
 
-/** How many new Summaries the Guest may still make today. */
+/** How many new Summaries the Guest or Member may still make today. */
 export async function GET(request: Request) {
   try {
-    const requester = await guestFrom(request);
+    const requester = await requesterFrom(request);
     return Response.json(await getCore().summariesLeftToday(requester), {
       headers: { "Cache-Control": "no-store" },
     });

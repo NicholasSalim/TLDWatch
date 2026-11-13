@@ -1,5 +1,5 @@
 import { getCore } from "@/server/core";
-import { guestFrom } from "@/server/guest-identity";
+import { requesterFrom } from "@/server/auth";
 import type { SummaryResponse } from "@/lib/api-types";
 
 // Reading a new video can take a while; stored Summaries return at once.
@@ -15,8 +15,7 @@ export async function POST(request: Request) {
 
   let response: SummaryResponse;
   try {
-    // Everyone is a Guest until sign-in exists.
-    const requester = await guestFrom(request);
+    const requester = await requesterFrom(request);
     const result = await getCore().requestSummary({ videoUrl, requester, language });
     // A failed count must never turn a Summary into an error.
     const summariesLeft = await getCore()

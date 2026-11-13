@@ -7,11 +7,13 @@
 import "server-only";
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createGeminiTranslator } from "@/adapters/gemini-translator";
+import { createSupabaseMemberStore } from "@/adapters/supabase-member-store";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
 import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
 import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
 import type {
+  MemberStore,
   SummaryEngine,
   SummaryStore,
   Translator,
@@ -53,6 +55,13 @@ const usage = once(() =>
   }),
 );
 
+const members = once(() =>
+  createSupabaseMemberStore({
+    url: requireEnv("SUPABASE_URL"),
+    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  }),
+);
+
 /** Limits come from the environment, falling back to the core's defaults. */
 function limitsFromEnv(): UsageLimits {
   return {
@@ -86,6 +95,11 @@ export const getCore: () => Core = once(() =>
       giveBack: (counter, day, amount) => usage().giveBack(counter, day, amount),
       used: (counter, day) => usage().used(counter, day),
     } satisfies UsageCounters,
+    members: {
+      findMember: (id) => members().findMember(id),
+      createMember: (member) => members().createMember(member),
+      setAutoplay: (id, on) => members().setAutoplay(id, on),
+    } satisfies MemberStore,
     clock: { now: () => new Date() },
     limits: limitsFromEnv(),
     onFailure: (error, { videoId }) =>

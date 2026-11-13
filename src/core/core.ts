@@ -5,6 +5,8 @@
 import { DURATION_LIMIT_MINUTES } from "./limits";
 import type {
   Clock,
+  Member,
+  MemberStore,
   SummaryEngine,
   SummaryStore,
   Translator,
@@ -49,6 +51,7 @@ export type CoreDeps = {
   catalog: VideoCatalog;
   store: SummaryStore;
   usage: UsageCounters;
+  members: MemberStore;
   clock: Clock;
   limits?: UsageLimits;
   /**
@@ -99,6 +102,10 @@ export type SummaryResult =
     }
   | SummaryRejection;
 
+export type JoinResult =
+  | { status: "member"; member: Member }
+  | { status: "rejected"; reason: "adult-confirmation-required" };
+
 export type SummariesLeft = { left: number; dailyLimit: number; resetsAt: string };
 
 /** How a generation ended. */
@@ -121,6 +128,7 @@ export function createCore({
   catalog,
   store,
   usage,
+  members,
   clock,
   limits = DEFAULT_LIMITS,
   // Reading plus translating must fit inside the route's 120 seconds.
@@ -375,7 +383,46 @@ export function createCore({
     return store.findSummary(shareId, language);
   }
 
-  return { requestSummary, summariesLeftToday, readSharedSummary };
+  /**
+   * Signs someone in as a Member after Google sign-in. Someone new must have
+   * confirmed they're 18 or older; a returning Member isn't asked again.
+   */
+  async function joinAsMember({
+    memberId,
+    confirmedAdult,
+  }: {
+    memberId: string;
+    confirmedAdult: boolean;
+  }): Promise<JoinResult> {
+    const existing = await members.findMember(memberId);
+    if (existing) return { status: "member", member: existing };
+    if (!confirmedAdult) return { status: "rejected", reason: "adult-confirmation-required" };
+    const member = await members.createMember({
+      id: memberId,
+      adultConfirmedAt: clock.now().toISOString(),
+      autoplay: false,
+    });
+    return { status: "member", member };
+  }
+
+  /** A Member's saved settings, or null if they never joined. */
+  async function memberSettings(memberId: string): Promise<{ autoplay: boolean } | null> {
+    const member = await members.findMember(memberId);
+    return member && { autoplay: member.autoplay };
+  }
+
+  async function setMemberAutoplay(memberId: string, on: boolean): Promise<void> {
+    await members.setAutoplay(memberId, on);
+  }
+
+  return {
+    requestSummary,
+    summariesLeftToday,
+    readSharedSummary,
+    joinAsMember,
+    memberSettings,
+    setMemberAutoplay,
+  };
 }
 
 export type Core = ReturnType<typeof createCore>;

@@ -65,6 +65,21 @@ export interface UsageCounters {
   used(counter: string, day: string): Promise<number>;
 }
 
+/** A Member's profile: who they are to TLDWatch, beyond their Google sign-in. */
+export type Member = {
+  id: string;
+  /** When they confirmed they're 18 or older, at sign-up. */
+  adultConfirmedAt: string;
+  autoplay: boolean;
+};
+
+export interface MemberStore {
+  findMember(id: string): Promise<Member | null>;
+  /** Creates the profile, or returns the existing one if it's already there. */
+  createMember(member: Member): Promise<Member>;
+  setAutoplay(id: string, on: boolean): Promise<void>;
+}
+
 export interface Clock {
   now(): Date;
 }
