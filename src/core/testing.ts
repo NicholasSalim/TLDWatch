@@ -135,6 +135,12 @@ export class InMemorySummaryStore implements SummaryStore {
     return videoIds.flatMap((id) => this.summaries.get(`${id}:${language}`) ?? []);
   }
 
+  async deleteOwnedBy(ownerId: string) {
+    for (const [key, summary] of this.summaries) {
+      if (summary.ownerId === ownerId) this.summaries.delete(key);
+    }
+  }
+
   async saveSummary(summary: Summary) {
     const key = `${summary.videoId}:${summary.language}`;
     const existing = this.summaries.get(key);
@@ -188,6 +194,12 @@ export class InMemoryUsageCounters implements UsageCounters {
     this.counts.set(`${counter}@${day}`, Math.max(0, used - amount));
   }
 
+  async forget(counter: string) {
+    for (const key of [...this.counts.keys()]) {
+      if (key.startsWith(`${counter}@`)) this.counts.delete(key);
+    }
+  }
+
   async used(counter: string, day: string) {
     return this.counts.get(`${counter}@${day}`) ?? 0;
   }
@@ -234,6 +246,12 @@ export class InMemoryUploadStorage implements UploadStorage {
   files = new Map<string, UploadedVideo>();
   uploadedAt = new Map<string, string>();
   removed: string[] = [];
+
+  async removeAllFor(memberId: string) {
+    for (const path of [...this.files.keys()]) {
+      if (path.startsWith(`${memberId}/`)) await this.remove(path);
+    }
+  }
 
   async removeOlderThan(cutoff: string) {
     const old = [...this.files.keys()].filter((path) => (this.uploadedAt.get(path) ?? "") < cutoff);
@@ -282,6 +300,12 @@ export class InMemoryHistoryStore implements HistoryStore {
   async removeEntry(memberId: string, videoId: string) {
     this.entries.delete(`${memberId}:${videoId}`);
   }
+
+  async removeAllFor(memberId: string) {
+    for (const [key, entry] of this.entries) {
+      if (entry.memberId === memberId) this.entries.delete(key);
+    }
+  }
 }
 
 export class InMemoryMemberStore implements MemberStore {
@@ -296,6 +320,10 @@ export class InMemoryMemberStore implements MemberStore {
     if (existing) return existing;
     this.members.set(member.id, member);
     return member;
+  }
+
+  async deleteMember(id: string) {
+    this.members.delete(id);
   }
 
   async setAutoplay(id: string, on: boolean) {

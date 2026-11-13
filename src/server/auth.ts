@@ -69,8 +69,9 @@ export function isSameOrigin(request: Request): boolean {
 }
 
 /**
- * Removes a sign-in that never became a Member (they didn't confirm they're
- * 18 or older), so their Google details aren't kept.
+ * Removes a sign-in from Supabase Auth, so their Google details aren't kept:
+ * one that never became a Member (not confirmed 18 or older), or a Member who
+ * deleted their account.
  */
 export async function forgetAuthUser(userId: string): Promise<void> {
   const url = process.env.SUPABASE_URL;

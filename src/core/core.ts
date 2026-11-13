@@ -899,7 +899,27 @@ export function createCore({
   }
 
 
+  /**
+   * Deletes a Member and everything personal: waiting Upload files, their
+   * History, their Upload Summaries (every language) and their profile with
+   * its settings. Shared YouTube Summaries and their Narration audio stay, so
+   * links people have shared keep working.
+   */
+  async function deleteMember(memberId: string): Promise<void> {
+    // Explicit, even where the database would cascade, so the rule is stated
+    // (and tested) here. Every step is safe to repeat, so a deletion that
+    // stopped partway can simply be run again.
+    await uploads.removeAllFor(memberId);
+    await history.removeAllFor(memberId);
+    await store.deleteOwnedBy(memberId);
+    for (const { counter } of summaryCounters({ kind: "member", memberId })) {
+      await usage.forget(counter);
+    }
+    await members.deleteMember(memberId);
+  }
+
   return {
+    deleteMember,
     startUpload,
     summarizeUpload,
     readUploadSummary,

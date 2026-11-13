@@ -64,6 +64,11 @@ export function createSupabaseSummaryStore({
       return data.map(fromRow);
     },
 
+    async deleteOwnedBy(ownerId) {
+      const { error } = await db.from("summaries").delete().eq("owner_id", ownerId);
+      if (error) throw error;
+    },
+
     async saveSummary(summary) {
       // Another server instance may have stored this video first: keep theirs.
       const { error } = await db.from("summaries").upsert(

@@ -34,6 +34,8 @@ export interface UploadStorage {
   /** The uploaded file, or null if there's none at that path. */
   read(path: string): Promise<UploadedVideo | null>;
   remove(path: string): Promise<void>;
+  /** Deletes every file waiting in a Member's folder. */
+  removeAllFor(memberId: string): Promise<void>;
   /** Deletes every file uploaded before `cutoff` (an ISO time); returns how many. */
   removeOlderThan(cutoff: string): Promise<number>;
 }
@@ -47,6 +49,8 @@ export interface SummaryStore {
    * keeps the existing one and returns it.
    */
   saveSummary(summary: Summary): Promise<Summary>;
+  /** Deletes every Summary a Member owns (their Uploads, in every language). */
+  deleteOwnedBy(ownerId: string): Promise<void>;
 }
 
 export interface Translator {
@@ -90,6 +94,8 @@ export interface UsageCounters {
   /** Gives back an amount used by a request that then failed. */
   giveBack(counter: string, day: string, amount: number): Promise<void>;
   used(counter: string, day: string): Promise<number>;
+  /** Deletes a counter on every day it was used (a deleted Member's, say). */
+  forget(counter: string): Promise<void>;
 }
 
 /** A Member's profile: who they are to TLDWatch, beyond their Google sign-in. */
@@ -105,6 +111,7 @@ export interface MemberStore {
   /** Creates the profile, or returns the existing one if it's already there. */
   createMember(member: Member): Promise<Member>;
   setAutoplay(id: string, on: boolean): Promise<void>;
+  deleteMember(id: string): Promise<void>;
 }
 
 /** One video a Member has opened: the language last opened, and when. */
@@ -121,6 +128,7 @@ export interface HistoryStore {
   /** Newest first; with `before`, only entries opened earlier than that time. */
   listHistory(memberId: string, limit: number, before?: string): Promise<HistoryEntry[]>;
   removeEntry(memberId: string, videoId: string): Promise<void>;
+  removeAllFor(memberId: string): Promise<void>;
 }
 
 export interface NaturalVoice {

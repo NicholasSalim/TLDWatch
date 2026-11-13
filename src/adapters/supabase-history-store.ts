@@ -58,6 +58,11 @@ export function createSupabaseHistoryStore({
       }));
     },
 
+    async removeAllFor(memberId) {
+      const { error } = await db.from("history").delete().eq("member_id", memberId);
+      if (error) throw error;
+    },
+
     async removeEntry(memberId, videoId) {
       const { error } = await db
         .from("history")
