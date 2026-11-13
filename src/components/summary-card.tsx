@@ -1,9 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { narrationScript } from "@/core/narration";
 import type { Length, Summary, SummaryLanguage } from "@/core/summary";
 import { fetchSummary } from "@/lib/summary-client";
-import type { LanguageNames } from "@/lib/language-names";
+import { useAutoplay } from "@/lib/autoplay";
+import { namesOf, type LanguageNames } from "@/lib/language-names";
+import { NarrationPlayer } from "@/components/narration-player";
 import { SummaryView } from "@/components/summary-view";
 
 /**
@@ -63,12 +66,28 @@ export function SummaryCard({
   // Until the chosen language arrives, keep showing the one already here.
   const shown = versions[language] ?? versions.english ?? initial;
 
+  // Narration reads exactly what's on screen. Autoplay happens once per Summary.
+  const [autoplay] = useAutoplay();
+  const [autoplayed, setAutoplayed] = useState(false);
+  const spokenNames = languageNames ?? namesOf(shown.spokenLanguage);
+  const narrationLanguage = shown.language === "original" ? shown.spokenLanguage : "en";
+
   return (
     <SummaryView
       summary={shown}
       length={length}
       onLengthChange={setLength}
       languageNames={languageNames}
+      narration={
+        <NarrationPlayer
+          key={`${length}:${shown.language}`}
+          chunks={narrationScript(shown.lengths[length])}
+          languageCode={narrationLanguage}
+          languageName={shown.language === "original" ? spokenNames.english : "English"}
+          autoStart={autoplay && !autoplayed}
+          onAutoStart={() => setAutoplayed(true)}
+        />
+      }
       languageControl={{
         value: language,
         onChange: changeLanguage,

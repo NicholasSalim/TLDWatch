@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { ArrowUp, Headphones, Paperclip } from "lucide-react";
 import type { SummariesLeft, SummaryRejection } from "@/core/core";
 import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
+import { useAutoplay } from "@/lib/autoplay";
 import { fetchSummary } from "@/lib/summary-client";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
@@ -34,37 +35,6 @@ type Notice =
   | { kind: "info"; text: string }
   | { kind: "summarizing"; videoId: string }
   | { kind: "summary"; summary: Summary; translationFailed: boolean };
-
-const AUTOPLAY_KEY = "tldwatch:autoplay";
-
-// Autoplay narration is a per-browser setting for Guests, kept in localStorage.
-const autoplayListeners = new Set<() => void>();
-
-function subscribeAutoplay(listener: () => void) {
-  autoplayListeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => {
-    autoplayListeners.delete(listener);
-    window.removeEventListener("storage", listener);
-  };
-}
-
-function readAutoplay(): boolean {
-  try {
-    return window.localStorage.getItem(AUTOPLAY_KEY) === "on";
-  } catch {
-    return false;
-  }
-}
-
-function writeAutoplay(on: boolean) {
-  try {
-    window.localStorage.setItem(AUTOPLAY_KEY, on ? "on" : "off");
-  } catch {
-    // Storage blocked (private mode etc.): the setting just won't persist.
-  }
-  autoplayListeners.forEach((listener) => listener());
-}
 
 function rejectionText(rejection: SummaryRejection): string {
   switch (rejection.reason) {
@@ -114,7 +84,7 @@ export function SummarizeInput() {
   const [value, setValue] = useState("");
   const [length, setLength] = useState<Length>("medium");
   const [language, setLanguage] = useState<Language>("english");
-  const autoplay = useSyncExternalStore(subscribeAutoplay, readAutoplay, () => false);
+  const [autoplay, setAutoplay] = useAutoplay();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [summariesLeft, setSummariesLeft] = useState<SummariesLeft | null>(null);
   const wrapperRef = useRef<HTMLFormElement>(null);
@@ -179,7 +149,7 @@ export function SummarizeInput() {
     );
   };
 
-  const toggleAutoplay = () => writeAutoplay(!autoplay);
+  const toggleAutoplay = () => setAutoplay(!autoplay);
 
   const spring = reduceMotion
     ? { duration: 0 }
