@@ -47,8 +47,34 @@ export const engineOutputSchema = z.object({
 
 export type LengthContent = z.infer<typeof lengthContentSchema>;
 
-/** English, or the language the video is spoken in. */
-export type SummaryLanguage = "english" | "original";
+/**
+ * English, the language the video is spoken in ("original"), or another
+ * language a Member chose from the configured list, as a base code ("id", "es").
+ */
+export type SummaryLanguage = "english" | "original" | (string & {});
+
+/** The BCP-47 code a Summary is written in: "en", its spoken language, or its own code. */
+export function textLanguageOf(summary: { language: SummaryLanguage; spokenLanguage: string }): string {
+  if (summary.language === "english") return "en";
+  if (summary.language === "original") return summary.spokenLanguage;
+  return summary.language;
+}
+
+/**
+ * Any language value made safe: "english", "original", or a valid base code
+ * ("id" from "id-ID"). English as a code, and anything unrecognisable, is "english".
+ */
+export function normalizeLanguage(language: string): SummaryLanguage {
+  if (language === "english" || language === "original") return language;
+  if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language)) return "english";
+  const base = baseLanguage(language);
+  return base === "en" ? "english" : base;
+}
+
+/** The base of a language code: "pt" for "pt-BR". */
+export function baseLanguage(code: string): string {
+  return code.toLowerCase().split("-")[0];
+}
 
 /** Whether a BCP-47 language code is English ("en", "en-GB", ...). */
 export function isEnglish(languageCode: string): boolean {

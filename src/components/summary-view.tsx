@@ -5,6 +5,7 @@ import { Check, Link2, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-r
 import {
   isEnglish,
   LENGTH_LABELS,
+  textLanguageOf,
   LENGTHS,
   type Length,
   type LengthContent,
@@ -71,10 +72,30 @@ export function Summarizing({ videoId }: { videoId: string }) {
 }
 
 /** The language switch on a Summary: English, or the language the video is spoken in. */
+/** Why the language chosen isn't showing. */
+export type LanguageProblem = "failed" | "members-only" | "not-offered";
+
+/**
+ * The language switch on a Summary: English, the video's original language,
+ * and (for Members) other configured languages.
+ */
 export type LanguageControl = {
   value: SummaryLanguage;
   onChange: (language: SummaryLanguage) => void;
-  status: "idle" | "translating" | "failed";
+  status: "idle" | "translating";
+  problem: LanguageProblem | null;
+  /** Other languages on offer, labelled for the list. */
+  others: { code: string; label: string }[];
+  /** Who can pick them: Members; Guests see them greyed out; unknown while loading. */
+  othersAccess: "members" | "guests" | "unknown";
+  /** The language chosen, named in English, for notes. */
+  languageName: string;
+};
+
+const PROBLEM_NOTES: Record<LanguageProblem, (name: string) => string> = {
+  failed: (name) => `Couldn't make the ${name} version right now. This is the English one.`,
+  "members-only": (name) => `Reading in ${name} is for Members. This is the English one.`,
+  "not-offered": (name) => `${name} isn't offered any more. This is the English one.`,
 };
 
 export function SummaryView({
@@ -100,7 +121,7 @@ export function SummaryView({
 
   return (
     <article
-      lang={summary.language === "original" ? spoken : "en"}
+      lang={textLanguageOf(summary)}
       className="rounded-2xl border border-white/10 bg-white/4 p-4 sm:p-5"
     >
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
@@ -132,14 +153,40 @@ export function SummaryView({
             onChange={(v) => languageControl.onChange(v as SummaryLanguage)}
           />
         )}
+        {languageControl.others.length > 0 && (
+          <label className="flex items-center gap-1.5 text-sm text-haze">
+            <span className="sr-only">More languages</span>
+            <select
+              value={
+                languageControl.others.some((o) => o.code === languageControl.value)
+                  ? languageControl.value
+                  : ""
+              }
+              onChange={(e) => e.target.value && languageControl.onChange(e.target.value)}
+              disabled={languageControl.othersAccess !== "members"}
+              className="h-9 rounded-full border border-white/10 bg-[#151a3c] px-3 text-sm text-mist disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-lumen"
+            >
+              <option value="">
+                {languageControl.othersAccess === "guests"
+                  ? "More languages · Members only"
+                  : "More languages…"}
+              </option>
+              {languageControl.others.map((o) => (
+                <option key={o.code} value={o.code}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {languageControl.status === "translating" && (
           <p role="status" className="text-sm text-haze">
             Translating…
           </p>
         )}
-        {languageControl.status === "failed" && (
+        {languageControl.problem && (
           <p role="status" className="text-sm text-negative">
-            Couldn&apos;t make the {names.english} version right now. This is the English one.
+            {PROBLEM_NOTES[languageControl.problem](languageControl.languageName)}
           </p>
         )}
       </div>

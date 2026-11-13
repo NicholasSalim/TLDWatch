@@ -1,3 +1,4 @@
+import { parseSummaryLanguage } from "@/lib/summary-language";
 import { isSameOrigin, signedInMemberId } from "@/server/auth";
 import { getCore } from "@/server/core";
 
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
   const field = (name: string): unknown =>
     body && typeof body === "object" && name in body ? (body as Record<string, unknown>)[name] : undefined;
   const videoId = typeof field("videoId") === "string" ? (field("videoId") as string) : "";
-  const language = field("language") === "original" ? "original" : "english";
+  const language = parseSummaryLanguage(field("language"));
 
   const memberId = await signedInMemberId();
   if (memberId) await getCore().recordOpened({ kind: "member", memberId }, videoId, language);

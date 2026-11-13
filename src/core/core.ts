@@ -19,8 +19,11 @@ import type {
 } from "./ports";
 import type { Requester } from "./requester";
 import {
+  baseLanguage,
   engineOutputSchema,
+  normalizeLanguage,
   isEnglish,
+  textLanguageOf,
   LENGTHS,
   translationSchema,
   type Length,
@@ -60,6 +63,8 @@ export type CoreDeps = {
   voice: NaturalVoice;
   narrationAudio: NarrationAudioStore;
   clock: Clock;
+  /** Other languages Members may read a Summary in, as base codes ("id", "es"). */
+  summaryLanguages?: string[];
   /** Natural voice characters the whole app may use per calendar month. */
   naturalVoiceMonthlyCharacters?: number;
   limits?: UsageLimits;
@@ -77,14 +82,20 @@ export type CoreDeps = {
 export type SummaryRequest = {
   videoUrl: string;
   requester: Requester;
-  /** English (the default), or the language the video is spoken in. */
+  /** English (the default), the video's spoken language ("original"), or a configured code. */
   language?: SummaryLanguage;
 };
 
 export type SummaryRejection =
   | {
       status: "rejected";
-      reason: VideoUrlRejection | "video-unavailable" | "video-not-finished" | "summary-failed";
+      reason:
+        | VideoUrlRejection
+        | "video-unavailable"
+        | "video-not-finished"
+        | "summary-failed"
+        | "language-members-only"
+        | "language-not-offered";
     }
   | {
       status: "rejected";
@@ -106,7 +117,7 @@ export type SummaryResult =
   | {
       status: "ready";
       summary: Summary;
-      /** Set when the original language was asked for but couldn't be made: this is English. */
+      /** Set when another language was asked for but couldn't be made: this is English. */
       translationFailed?: true;
     }
   | SummaryRejection;
@@ -173,6 +184,7 @@ export function createCore({
   engine,
   translator,
   catalog,
+  summaryLanguages = [],
   store,
   usage,
   members,
@@ -298,7 +310,7 @@ export function createCore({
     requester,
     language = "english",
   }: SummaryRequest): Promise<SummaryResult> {
-    const result = await summaryIn(language, videoUrl, requester);
+    const result = await summaryIn(normalizeLanguage(language), videoUrl, requester);
     if (result.status === "ready" && requester.kind === "member") {
       const { videoId, language: shown } = result.summary;
       await remember(requester.memberId, videoId, shown).catch((error) =>
@@ -313,43 +325,63 @@ export function createCore({
     videoUrl: string,
     requester: Requester,
   ): Promise<SummaryResult> {
+    // Another language: only the configured ones, and only for Members.
+    const target = language;
+    if (target !== "english" && target !== "original") {
+      if (!summaryLanguages.includes(target)) {
+        return { status: "rejected", reason: "language-not-offered" };
+      }
+      if (requester.kind !== "member") {
+        return { status: "rejected", reason: "language-members-only" };
+      }
+    }
+
     const english = await requestEnglishSummary(videoUrl, requester);
-    if (language === "english" || english.status !== "ready") return english;
-    const original = await translateOnce(english.summary);
+    if (target === "english" || english.status !== "ready") return english;
+    const translated = await translateOnce(english.summary, target);
     // The English Summary is already made (and maybe counted): never throw it away.
-    return original
-      ? { status: "ready", summary: original }
+    return translated
+      ? { status: "ready", summary: translated }
       : { status: "ready", summary: english.summary, translationFailed: true };
   }
 
-  // Translations under way in this process, keyed by video ID.
+  // Translations under way in this process, keyed by video and language.
   const translating = new Map<string, Promise<Summary | null>>();
 
-  /** The original-language Summary, translating the English one at most once. */
-  function translateOnce(english: Summary): Promise<Summary | null> {
+  /**
+   * The Summary in another language, translated from the English one at most
+   * once. The video's own spoken language is always its "original" Summary.
+   */
+  function translateOnce(english: Summary, target: SummaryLanguage): Promise<Summary | null> {
+    const spoken = baseLanguage(english.spokenLanguage);
+    const language = target === spoken ? "original" : target;
     // An English video's original-language Summary is the English one.
-    if (isEnglish(english.spokenLanguage)) return Promise.resolve(english);
-    let pending = translating.get(english.videoId);
+    if (language === "original" && isEnglish(english.spokenLanguage)) {
+      return Promise.resolve(english);
+    }
+    const key = `${english.videoId}:${language}`;
+    let pending = translating.get(key);
     if (!pending) {
-      pending = translate(english).finally(() => translating.delete(english.videoId));
-      translating.set(english.videoId, pending);
+      pending = translate(english, language).finally(() => translating.delete(key));
+      translating.set(key, pending);
     }
     return pending;
   }
 
   /** Translates the stored English text. It never reads the video. */
-  async function translate(english: Summary): Promise<Summary | null> {
+  async function translate(english: Summary, language: SummaryLanguage): Promise<Summary | null> {
     const { videoId, spokenLanguage } = english;
     try {
-      const existing = await store.findSummary(videoId, "original");
+      const existing = await store.findSummary(videoId, language);
       if (existing) return existing;
+      const into = language === "original" ? spokenLanguage : language;
       const raw = await withDeadline(
-        translator.translateSummary(english.lengths, spokenLanguage),
+        translator.translateSummary(english.lengths, into),
         translationTimeoutMs,
       );
       return await store.saveSummary({
         videoId,
-        language: "original",
+        language,
         spokenLanguage,
         lengths: keepStructure(english.lengths, translationSchema.parse(raw)),
         createdAt: clock.now().toISOString(),
@@ -444,10 +476,17 @@ export function createCore({
    */
   async function readSharedSummary(
     shareId: string,
-    language: SummaryLanguage = "english",
+    requested: string = "english",
   ): Promise<Summary | null> {
     if (!isVideoId(shareId)) return null;
-    return store.findSummary(shareId, language);
+    const language = normalizeLanguage(requested);
+    const found = await store.findSummary(shareId, language);
+    if (found || language === "english" || language === "original") return found;
+    // The video's own language as a code ("ko" for a Korean video) is its original Summary.
+    const english = await store.findSummary(shareId, "english");
+    return english && baseLanguage(english.spokenLanguage) === language
+      ? store.findSummary(shareId, "original")
+      : null;
   }
 
   /**
@@ -490,9 +529,10 @@ export function createCore({
   async function recordOpened(
     requester: Requester,
     videoId: string,
-    language: SummaryLanguage,
+    requestedLanguage: string,
   ): Promise<void> {
     if (requester.kind !== "member" || !isVideoId(videoId)) return;
+    const language = normalizeLanguage(requestedLanguage);
     try {
       if (!(await store.findSummary(videoId, language))) return;
       await remember(requester.memberId, videoId, language);
@@ -515,24 +555,22 @@ export function createCore({
     { before }: { before?: string } = {},
   ): Promise<HistoryItem[]> {
     const entries = await history.listHistory(memberId, HISTORY_PAGE, before);
-    const ids = entries.map((e) => e.videoId);
-    const [english, original] = await Promise.all([
-      store.findSummaries(ids, "english"),
-      store.findSummaries(
-        entries.filter((e) => e.language === "original").map((e) => e.videoId),
-        "original",
-      ),
-    ]);
-    const byId = (list: Summary[]) => new Map(list.map((s) => [s.videoId, s]));
-    const englishById = byId(english);
-    const originalById = byId(original);
+    // One batched read per language, plus English for anything whose language is gone.
+    const languages = [...new Set(entries.map((e) => e.language))];
+    const found = await Promise.all(
+      [...new Set<SummaryLanguage>(["english", ...languages])].map(async (lang) => {
+        const ids = entries.filter((e) => lang === "english" || e.language === lang).map((e) => e.videoId);
+        return [lang, new Map((await store.findSummaries(ids, lang)).map((s) => [s.videoId, s]))] as const;
+      }),
+    );
+    const byLanguage = new Map(found);
 
     const items: HistoryItem[] = [];
     for (const entry of entries) {
       // The original-language Summary if it's there, else the English one.
       const summary =
-        (entry.language === "original" && originalById.get(entry.videoId)) ||
-        englishById.get(entry.videoId);
+        byLanguage.get(entry.language)?.get(entry.videoId) ??
+        byLanguage.get("english")?.get(entry.videoId);
       if (!summary) {
         // Its Summary is gone: forget the entry rather than keep a dead link.
         await history.removeEntry(memberId, entry.videoId).catch(() => {});
@@ -563,7 +601,7 @@ export function createCore({
    */
   async function requestNarration({
     videoId,
-    language,
+    language: requestedLanguage,
     length,
     requester,
     naturalVoiceId,
@@ -571,6 +609,7 @@ export function createCore({
     if (requester.kind !== "member") return { voice: "standard", reason: "guest" };
     if (!isVideoId(videoId)) return { voice: "standard", reason: "no-summary" };
 
+    const language = normalizeLanguage(requestedLanguage);
     let summary: Summary | null;
     try {
       summary = await store.findSummary(videoId, language);
@@ -581,7 +620,7 @@ export function createCore({
     if (!summary) return { voice: "standard", reason: "no-summary" };
 
     // A voice native to the language being read; anything not on its list gets the default.
-    const languageCode = language === "original" ? summary.spokenLanguage : "en";
+    const languageCode = textLanguageOf(summary);
     const allowed = voice.voicesFor(languageCode);
     const voiceId =
       naturalVoiceId && allowed.includes(naturalVoiceId) ? naturalVoiceId : allowed[0];
