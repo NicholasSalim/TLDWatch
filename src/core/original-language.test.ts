@@ -5,6 +5,7 @@ import {
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
+  InMemoryHistoryStore,
   InMemoryMemberStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -24,7 +25,7 @@ function setup(spokenLanguage = "ko") {
     translator,
     catalog: new FakeVideoCatalog(),
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
     clock: fixedClock(),
   });
   return { core, engine, translator };
@@ -136,7 +137,7 @@ describe("original-language Summaries", () => {
         translator,
         catalog: new FakeVideoCatalog(),
         store: new InMemorySummaryStore(),
-        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
+        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
         clock: fixedClock(),
         translationTimeoutMs: 20_000,
       });

@@ -5,6 +5,7 @@ import {
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
+  InMemoryHistoryStore,
   InMemoryMemberStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -22,7 +23,7 @@ function setup() {
     engine,
     catalog,
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(),
     clock: fixedClock(),
   });
   return { core, engine, catalog };

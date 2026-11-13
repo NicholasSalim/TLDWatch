@@ -5,6 +5,8 @@
 import type { Length, LengthContent } from "./summary";
 import type {
   Clock,
+  HistoryEntry,
+  HistoryStore,
   Member,
   MemberStore,
   Translator,
@@ -113,6 +115,10 @@ export class InMemorySummaryStore implements SummaryStore {
     return this.summaries.get(`${videoId}:${language}`) ?? null;
   }
 
+  async findSummaries(videoIds: string[], language: Summary["language"]) {
+    return videoIds.flatMap((id) => this.summaries.get(`${id}:${language}`) ?? []);
+  }
+
   async saveSummary(summary: Summary) {
     const key = `${summary.videoId}:${summary.language}`;
     const existing = this.summaries.get(key);
@@ -166,6 +172,25 @@ export class InMemoryUsageCounters implements UsageCounters {
 
   async used(counter: string, day: string) {
     return this.counts.get(`${counter}@${day}`) ?? 0;
+  }
+}
+
+export class InMemoryHistoryStore implements HistoryStore {
+  private entries = new Map<string, HistoryEntry>();
+
+  async recordOpened(entry: HistoryEntry) {
+    this.entries.set(`${entry.memberId}:${entry.videoId}`, entry);
+  }
+
+  async listHistory(memberId: string, limit: number, before?: string) {
+    return [...this.entries.values()]
+      .filter((e) => e.memberId === memberId && (!before || e.openedAt < before))
+      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
+      .slice(0, limit);
+  }
+
+  async removeEntry(memberId: string, videoId: string) {
+    this.entries.delete(`${memberId}:${videoId}`);
   }
 }
 

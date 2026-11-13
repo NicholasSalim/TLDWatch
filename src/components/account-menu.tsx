@@ -1,6 +1,7 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import Link from "next/link";
+import { History, LogOut } from "lucide-react";
 import { openSignIn, useMe } from "@/lib/me";
 
 /** Top-right of every page: "Sign in" for a Guest, the Member's menu once signed in. */
@@ -39,6 +40,13 @@ export function AccountMenu() {
       </summary>
       <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-white/10 bg-[#151a3c] p-2 shadow-[0_16px_48px_-16px_rgb(0_0_0/0.8)]">
         {email && <p className="truncate px-2 py-1.5 text-xs text-haze">{email}</p>}
+        <Link
+          href="/history"
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-mist hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-lumen"
+        >
+          <History className="size-4" aria-hidden />
+          History
+        </Link>
         <form method="post" action="/auth/sign-out">
           <button
             type="submit"
