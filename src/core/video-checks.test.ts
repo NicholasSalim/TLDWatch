@@ -3,6 +3,7 @@ import { createCore } from "./core";
 import type { Requester } from "./requester";
 import {
   FakeSummaryEngine,
+  FakeTranslator,
   FakeVideoCatalog,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -18,7 +19,7 @@ function setup() {
   const engine = new FakeSummaryEngine();
   const catalog = new FakeVideoCatalog();
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, catalog, store, usage: new InMemoryUsageCounters(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog, store, usage: new InMemoryUsageCounters(), clock: fixedClock() });
   return { core, engine, catalog, store };
 }
 

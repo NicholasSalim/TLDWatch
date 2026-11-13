@@ -42,7 +42,7 @@ export function createGeminiSummaryEngine({
     httpOptions: {
       // Stay inside the core's generation deadline: one quick retry for a
       // transient overload, instead of the SDK's default minutes of backoff.
-      timeout: 90_000,
+      timeout: 80_000,
       retryOptions: { attempts: 2, initialDelay: 2, maxDelay: 5 },
     },
   });

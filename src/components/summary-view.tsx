@@ -3,13 +3,16 @@
 import { useEffect, useState } from "react";
 import { Check, Link2, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-react";
 import {
+  isEnglish,
   LENGTH_LABELS,
   LENGTHS,
   type Length,
   type LengthContent,
   type Summary,
+  type SummaryLanguage,
 } from "@/core/summary";
 import { sharePath } from "@/core/share";
+import { namesOf, type LanguageNames } from "@/lib/language-names";
 import { formatTimestamp, timestampUrl } from "@/core/timestamps";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
@@ -67,28 +70,42 @@ export function Summarizing({ videoId }: { videoId: string }) {
   );
 }
 
+/** The language switch on a Summary: English, or the language the video is spoken in. */
+export type LanguageControl = {
+  value: SummaryLanguage;
+  onChange: (language: SummaryLanguage) => void;
+  status: "idle" | "translating" | "failed";
+};
+
 export function SummaryView({
   summary,
   length,
   onLengthChange,
-  originalRequested,
+  languageControl,
+  languageNames,
 }: {
   summary: Summary;
   length: Length;
   onLengthChange: (length: Length) => void;
-  originalRequested: boolean;
+  languageControl: LanguageControl;
+  languageNames?: LanguageNames;
 }) {
   // Every Length arrives with the Summary, so switching is local and instant.
   const content = summary.lengths[length];
+  const spoken = summary.spokenLanguage;
+  const names = languageNames ?? namesOf(spoken);
 
   return (
-    <article className="rounded-2xl border border-white/10 bg-white/4 p-4 sm:p-5">
+    <article
+      lang={summary.language === "original" ? spoken : "en"}
+      className="rounded-2xl border border-white/10 bg-white/4 p-4 sm:p-5"
+    >
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="flex items-center gap-4">
           <Thumbnail videoId={summary.videoId} />
           <div className="flex flex-col items-start gap-1">
             <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">Summary</h2>
-            <CopyLinkButton videoId={summary.videoId} />
+            <CopyLinkButton videoId={summary.videoId} language={summary.language} />
           </div>
         </div>
         <Segmented
@@ -99,17 +116,36 @@ export function SummaryView({
         />
       </div>
 
-      {originalRequested && (
-        <p className="mt-3 text-pretty text-sm text-haze">
-          Original-language summaries are coming soon. Here it is in English.
-        </p>
-      )}
+      <div lang="en" className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <p className="text-sm text-haze">Spoken in {names.english}</p>
+        {!isEnglish(spoken) && (
+          <Segmented
+            label="Summary language"
+            options={[
+              { value: "english", label: "English" },
+              { value: "original", label: names.native },
+            ]}
+            value={languageControl.value}
+            onChange={(v) => languageControl.onChange(v as SummaryLanguage)}
+          />
+        )}
+        {languageControl.status === "translating" && (
+          <p role="status" className="text-sm text-haze">
+            Translating…
+          </p>
+        )}
+        {languageControl.status === "failed" && (
+          <p role="status" className="text-sm text-negative">
+            Couldn&apos;t make the {names.english} version right now. This is the English one.
+          </p>
+        )}
+      </div>
 
       <Verdict verdict={content.verdict} />
 
       <p className="mt-5 text-pretty text-base leading-relaxed text-mist">{content.overview}</p>
 
-      <h3 className="mt-6 text-xs font-semibold tracking-widest text-haze uppercase">Key points</h3>
+      <h3 lang="en" className="mt-6 text-xs font-semibold tracking-widest text-haze uppercase">Key points</h3>
       <ul className="mt-2 list-disc space-y-1.5 pl-5 text-pretty text-sm leading-relaxed text-mist/90 marker:text-lumen">
         {content.keyPoints.map((point, i) => (
           <li key={i}>{point}</li>
@@ -118,7 +154,7 @@ export function SummaryView({
 
       {content.timestamps.length > 0 && (
         <>
-          <h3 className="mt-6 text-xs font-semibold tracking-widest text-haze uppercase">
+          <h3 lang="en" className="mt-6 text-xs font-semibold tracking-widest text-haze uppercase">
             Timestamps
           </h3>
           <ol className="mt-2 space-y-0.5">
@@ -145,7 +181,7 @@ export function SummaryView({
   );
 }
 
-function CopyLinkButton({ videoId }: { videoId: string }) {
+function CopyLinkButton({ videoId, language }: { videoId: string; language: SummaryLanguage }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const [link, setLink] = useState("");
 
@@ -156,7 +192,7 @@ function CopyLinkButton({ videoId }: { videoId: string }) {
   }, [state]);
 
   const copy = async () => {
-    const url = new URL(sharePath(videoId), window.location.origin).href;
+    const url = new URL(sharePath(videoId, language), window.location.origin).href;
     setLink(url);
     try {
       await navigator.clipboard.writeText(url);
@@ -199,7 +235,7 @@ function Verdict({ verdict }: { verdict: LengthContent["verdict"] }) {
       aria-label="Verdict"
       className="mt-5 rounded-xl border border-lumen/25 bg-lumen/6 p-3.5 sm:p-4"
     >
-      <div className="flex flex-wrap gap-2">
+      <div lang="en" className="flex flex-wrap gap-2">
         <VerdictBadge
           good={verdict.worthWatching}
           icon={verdict.worthWatching ? ThumbsUp : ThumbsDown}

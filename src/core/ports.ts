@@ -2,7 +2,7 @@
  * The adapters the core depends on. Production wires in the real services;
  * tests swap in the fakes from `./testing`.
  */
-import type { Summary, SummaryLanguage } from "./summary";
+import type { Length, LengthContent, Summary, SummaryLanguage } from "./summary";
 
 export interface SummaryEngine {
   /**
@@ -20,6 +20,18 @@ export interface SummaryStore {
    * keeps the existing one and returns it.
    */
   saveSummary(summary: Summary): Promise<Summary>;
+}
+
+export interface Translator {
+  /**
+   * Translates a Summary's three Lengths into another language (a BCP-47
+   * code such as "ko"), keeping their shape. Text only: the video is never
+   * read. The output is untrusted: the core validates it before use.
+   */
+  translateSummary(
+    lengths: Record<Length, LengthContent>,
+    targetLanguage: string,
+  ): Promise<unknown>;
 }
 
 /** What can be known about a YouTube video without reading it. */

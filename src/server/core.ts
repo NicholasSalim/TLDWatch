@@ -6,16 +6,32 @@
  */
 import "server-only";
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
+import { createGeminiTranslator } from "@/adapters/gemini-translator";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
 import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
 import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
-import type { SummaryEngine, SummaryStore, UsageCounters, VideoCatalog } from "@/core/ports";
+import type {
+  SummaryEngine,
+  SummaryStore,
+  Translator,
+  UsageCounters,
+  VideoCatalog,
+} from "@/core/ports";
+
+const geminiModel = () => process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
 const engine = once(() =>
   createGeminiSummaryEngine({
     apiKey: requireEnv("GEMINI_API_KEY"),
-    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+    model: geminiModel(),
+  }),
+);
+
+const translator = once(() =>
+  createGeminiTranslator({
+    apiKey: requireEnv("GEMINI_API_KEY"),
+    model: geminiModel(),
   }),
 );
 
@@ -55,6 +71,9 @@ export const getCore: () => Core = once(() =>
     engine: {
       summarizeYouTubeVideo: (videoId) => engine().summarizeYouTubeVideo(videoId),
     } satisfies SummaryEngine,
+    translator: {
+      translateSummary: (lengths, target) => translator().translateSummary(lengths, target),
+    } satisfies Translator,
     catalog: {
       lookUpVideo: (videoId) => catalog().lookUpVideo(videoId),
     } satisfies VideoCatalog,

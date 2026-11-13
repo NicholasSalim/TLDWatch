@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { SharedSummary } from "@/components/shared-summary";
+import { SummaryCard } from "@/components/summary-card";
+import { namesOf } from "@/lib/language-names";
 import { Wordmark } from "@/components/wordmark";
 import { isVideoId } from "@/core/video-url";
 import { getCore } from "@/server/core";
@@ -20,8 +21,11 @@ export async function generateMetadata({
   };
 }
 
-/** A Summary opened from its share link. Anyone can read it; nothing is generated. */
-export default function SharedSummaryPage({ params }: PageProps<"/v/[videoId]">) {
+/**
+ * A Summary opened from its share link. Anyone can read it, and opening it
+ * makes nothing. Switching to the original language may translate it once.
+ */
+export default function SharedSummaryPage({ params, searchParams }: PageProps<"/v/[videoId]">) {
   return (
     <div className="backdrop relative isolate flex min-h-dvh flex-col overflow-hidden">
       <header className="mx-auto flex w-full max-w-5xl items-center px-5 pt-6 sm:px-8">
@@ -30,21 +34,29 @@ export default function SharedSummaryPage({ params }: PageProps<"/v/[videoId]">)
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-10 pb-24 sm:px-8">
         <Suspense fallback={<LoadingSummary />}>
-          <SummaryFromLink params={params} />
+          <SummaryFromLink params={params} searchParams={searchParams} />
         </Suspense>
       </main>
     </div>
   );
 }
 
-async function SummaryFromLink({ params }: Pick<PageProps<"/v/[videoId]">, "params">) {
+async function SummaryFromLink({
+  params,
+  searchParams,
+}: Pick<PageProps<"/v/[videoId]">, "params" | "searchParams">) {
   const { videoId } = await params;
-  const summary = await getCore().readSharedSummary(videoId);
+  const { lang } = await searchParams;
+  const language = lang === "original" ? "original" : "english";
+  // An original-language link still opens if only the English Summary exists.
+  const summary =
+    (await getCore().readSharedSummary(videoId, language)) ??
+    (language === "original" ? await getCore().readSharedSummary(videoId) : null);
   if (!summary) return <NoSummary />;
   return (
     <>
       <h1 className="sr-only">Video summary</h1>
-      <SharedSummary summary={summary} />
+      <SummaryCard initial={summary} languageNames={namesOf(summary.spokenLanguage)} />
     </>
   );
 }

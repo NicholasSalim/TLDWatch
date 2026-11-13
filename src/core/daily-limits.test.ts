@@ -4,6 +4,7 @@ import type { Requester } from "./requester";
 import {
   ControllableClock,
   FakeSummaryEngine,
+  FakeTranslator,
   FakeVideoCatalog,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -32,6 +33,7 @@ function setup(limits: Partial<UsageLimits> = {}) {
   const catalog = new FakeVideoCatalog();
   const clock = new ControllableClock("2026-11-12T10:00:00.000Z");
   const core = createCore({
+    translator: new FakeTranslator(),
     engine,
     catalog,
     store: new InMemorySummaryStore(),
@@ -140,6 +142,7 @@ describe("Guest daily limits", () => {
       return realFind(videoId, language);
     };
     const core = createCore({
+      translator: new FakeTranslator(),
       engine,
       catalog: new FakeVideoCatalog(),
       store,
@@ -199,6 +202,7 @@ describe("Usage counter failures", () => {
       return realTryUse(counter, day, amount, limit);
     };
     const core = createCore({
+      translator: new FakeTranslator(),
       engine: new FakeSummaryEngine(),
       catalog: new FakeVideoCatalog(),
       store: new InMemorySummaryStore(),
@@ -284,6 +288,7 @@ describe("App capacity", () => {
       const engine = new FakeSummaryEngine(undefined, { manual: true });
       const usage = new InMemoryUsageCounters();
       const core = createCore({
+        translator: new FakeTranslator(),
         engine,
         catalog: new FakeVideoCatalog(),
         store: new InMemorySummaryStore(),

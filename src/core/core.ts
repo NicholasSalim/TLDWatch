@@ -3,9 +3,26 @@
  * Route handlers turn requests into calls here and results into responses.
  */
 import { DURATION_LIMIT_MINUTES } from "./limits";
-import type { Clock, SummaryEngine, SummaryStore, UsageCounters, VideoCatalog } from "./ports";
+import type {
+  Clock,
+  SummaryEngine,
+  SummaryStore,
+  Translator,
+  UsageCounters,
+  VideoCatalog,
+} from "./ports";
 import type { Requester } from "./requester";
-import { engineOutputSchema, type Summary, type SummaryLanguage } from "./summary";
+import {
+  engineOutputSchema,
+  isEnglish,
+  LENGTHS,
+  translationSchema,
+  type Length,
+  type Translation,
+  type LengthContent,
+  type Summary,
+  type SummaryLanguage,
+} from "./summary";
 import { isVideoId, parseVideoUrl, type VideoUrlRejection } from "./video-url";
 
 export type UsageLimits = {
@@ -28,6 +45,7 @@ export const DEFAULT_LIMITS: UsageLimits = {
 
 export type CoreDeps = {
   engine: SummaryEngine;
+  translator: Translator;
   catalog: VideoCatalog;
   store: SummaryStore;
   usage: UsageCounters;
@@ -38,11 +56,18 @@ export type CoreDeps = {
    * it, a hung engine call would leave every request for that video waiting.
    */
   generationTimeoutMs?: number;
+  /** How long translating a Summary may take. Short: it's text only. */
+  translationTimeoutMs?: number;
   /** Told about each failed request, for server-side logging. Never shown to users. */
   onFailure?: (error: unknown, context: { videoId: string }) => void;
 };
 
-export type SummaryRequest = { videoUrl: string; requester: Requester };
+export type SummaryRequest = {
+  videoUrl: string;
+  requester: Requester;
+  /** English (the default), or the language the video is spoken in. */
+  language?: SummaryLanguage;
+};
 
 export type SummaryRejection =
   | {
@@ -65,7 +90,14 @@ export type SummaryRejection =
     }
   | { status: "rejected"; reason: "app-capacity-reached"; resetsAt: string };
 
-export type SummaryResult = { status: "ready"; summary: Summary } | SummaryRejection;
+export type SummaryResult =
+  | {
+      status: "ready";
+      summary: Summary;
+      /** Set when the original language was asked for but couldn't be made: this is English. */
+      translationFailed?: true;
+    }
+  | SummaryRejection;
 
 export type SummariesLeft = { left: number; dailyLimit: number; resetsAt: string };
 
@@ -85,12 +117,15 @@ type Reservation = { counter: string; amount: number; limit: number };
 
 export function createCore({
   engine,
+  translator,
   catalog,
   store,
   usage,
   clock,
   limits = DEFAULT_LIMITS,
-  generationTimeoutMs = 100_000,
+  // Reading plus translating must fit inside the route's 120 seconds.
+  generationTimeoutMs = 85_000,
+  translationTimeoutMs = 30_000,
   onFailure,
 }: CoreDeps) {
   // Generations under way in this process, keyed by video ID. A request for a
@@ -198,7 +233,62 @@ export function createCore({
     }
   }
 
-  async function requestSummary({ videoUrl, requester }: SummaryRequest): Promise<SummaryResult> {
+  async function requestSummary({
+    videoUrl,
+    requester,
+    language = "english",
+  }: SummaryRequest): Promise<SummaryResult> {
+    const english = await requestEnglishSummary(videoUrl, requester);
+    if (language === "english" || english.status !== "ready") return english;
+    const original = await translateOnce(english.summary);
+    // The English Summary is already made (and maybe counted): never throw it away.
+    return original
+      ? { status: "ready", summary: original }
+      : { status: "ready", summary: english.summary, translationFailed: true };
+  }
+
+  // Translations under way in this process, keyed by video ID.
+  const translating = new Map<string, Promise<Summary | null>>();
+
+  /** The original-language Summary, translating the English one at most once. */
+  function translateOnce(english: Summary): Promise<Summary | null> {
+    // An English video's original-language Summary is the English one.
+    if (isEnglish(english.spokenLanguage)) return Promise.resolve(english);
+    let pending = translating.get(english.videoId);
+    if (!pending) {
+      pending = translate(english).finally(() => translating.delete(english.videoId));
+      translating.set(english.videoId, pending);
+    }
+    return pending;
+  }
+
+  /** Translates the stored English text. It never reads the video. */
+  async function translate(english: Summary): Promise<Summary | null> {
+    const { videoId, spokenLanguage } = english;
+    try {
+      const existing = await store.findSummary(videoId, "original");
+      if (existing) return existing;
+      const raw = await withDeadline(
+        translator.translateSummary(english.lengths, spokenLanguage),
+        translationTimeoutMs,
+      );
+      return await store.saveSummary({
+        videoId,
+        language: "original",
+        spokenLanguage,
+        lengths: keepStructure(english.lengths, translationSchema.parse(raw)),
+        createdAt: clock.now().toISOString(),
+      });
+    } catch (error) {
+      onFailure?.(error, { videoId });
+      return null;
+    }
+  }
+
+  async function requestEnglishSummary(
+    videoUrl: string,
+    requester: Requester,
+  ): Promise<SummaryResult> {
     const parsed = parseVideoUrl(videoUrl);
     if (!parsed.ok) return { status: "rejected", reason: parsed.reason };
     const { videoId } = parsed;
@@ -273,13 +363,16 @@ export function createCore({
   }
 
   /**
-   * Opens a Summary from its share link. It only ever reads: it never makes a
-   * Summary, looks a video up or counts against any limit. A YouTube Summary's
+   * Opens a stored Summary from its share link. It only reads: it never makes
+   * or translates a Summary, looks a video up or counts against any limit. A YouTube Summary's
    * share id is its video ID; Uploads have none, so they can't be shared.
    */
-  async function readSharedSummary(shareId: string): Promise<Summary | null> {
+  async function readSharedSummary(
+    shareId: string,
+    language: SummaryLanguage = "english",
+  ): Promise<Summary | null> {
     if (!isVideoId(shareId)) return null;
-    return store.findSummary(shareId, SUMMARY_LANGUAGE);
+    return store.findSummary(shareId, language);
   }
 
   return { requestSummary, summariesLeftToday, readSharedSummary };
@@ -295,6 +388,34 @@ function nextUtcMidnight(date: Date): string {
   const next = new Date(date);
   next.setUTCHours(24, 0, 0, 0);
   return next.toISOString();
+}
+
+/**
+ * Takes only the text from a translation. Timestamp seconds and Verdict
+ * answers come from the English Summary, and every list must keep its length.
+ */
+function keepStructure(
+  english: Record<Length, LengthContent>,
+  translated: Translation,
+): Record<Length, LengthContent> {
+  const result = {} as Record<Length, LengthContent>;
+  for (const length of LENGTHS) {
+    const en = english[length];
+    const tr = translated[length];
+    if (
+      tr.keyPoints.length !== en.keyPoints.length ||
+      tr.timestamps.length !== en.timestamps.length
+    ) {
+      throw new Error(`Translation changed the shape of the ${length} Summary`);
+    }
+    result[length] = {
+      overview: tr.overview,
+      keyPoints: tr.keyPoints,
+      timestamps: en.timestamps.map((t, i) => ({ seconds: t.seconds, label: tr.timestamps[i].label })),
+      verdict: { ...en.verdict, explanation: tr.verdict.explanation },
+    };
+  }
+  return result;
 }
 
 class DeadlineExceeded extends Error {}
