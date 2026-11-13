@@ -94,16 +94,21 @@ export function SummarizeInput() {
     return () => document.removeEventListener("pointerdown", handlePointer);
   }, []);
 
-  const submit = async (event: React.FormEvent) => {
+  const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    const parsed = parseVideoUrl(value);
+    void summarize(value);
+  };
+
+  /** Judges the text as a Video URL and, if it is one, asks for its Summary. */
+  const summarize = async (text: string) => {
+    const parsed = parseVideoUrl(text);
     if (!parsed.ok) {
       setNotice({ kind: "error", text: rejectionText({ status: "rejected", reason: parsed.reason }) });
       return;
     }
     const request = ++latestRequest.current;
     setNotice({ kind: "summarizing", videoId: parsed.videoId });
-    const result = await fetchSummary(value, language);
+    const result = await fetchSummary(text, language);
     if (result.summariesLeft) setSummariesLeft(result.summariesLeft);
     if (request !== latestRequest.current) return;
     setNotice(
@@ -119,6 +124,26 @@ export function SummarizeInput() {
           },
     );
   };
+
+  // A link shared from the phone's Share menu arrives as ?link=. In the installed
+  // app (where Share menu shares open) it's summarized straight away, as if
+  // pasted. In a browser tab it's only filled in, so a link someone else crafted
+  // can't spend a visitor's daily Summaries without a tap.
+  useEffect(() => {
+    const link = new URLSearchParams(window.location.search).get("link");
+    if (!link) return;
+    const timer = setTimeout(() => {
+      // Tidied only once it's really submitted, so React's dev-mode double effect can't lose it.
+      window.history.replaceState(null, "", window.location.pathname);
+      setValue(link);
+      setIsActive(true);
+      if (window.matchMedia("(display-mode: standalone)").matches) void summarize(link);
+      else inputRef.current?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+    // Runs once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleAutoplay = () => setAutoplay(!autoplay);
 
