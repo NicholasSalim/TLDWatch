@@ -16,6 +16,8 @@ function load() {
   loading = true;
   fetch("/api/me", { cache: "no-store" })
     .then((response) => {
+      // Blocked region: there's no one to sign in here, so stop asking.
+      if (response.status === 451) return { member: null } satisfies Me;
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return response.json() as Promise<Me>;
     })

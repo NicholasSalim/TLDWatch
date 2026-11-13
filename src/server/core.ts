@@ -134,6 +134,7 @@ export const getCore: () => Core = once(() =>
       giveBack: (counter, day, amount) => usage().giveBack(counter, day, amount),
       used: (counter, day) => usage().used(counter, day),
       forget: (counter) => usage().forget(counter),
+      forgetBefore: (day) => usage().forgetBefore(day),
     } satisfies UsageCounters,
     members: {
       findMember: (id) => members().findMember(id),

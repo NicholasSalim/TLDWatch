@@ -5,14 +5,8 @@ import { Headphones, Pause, Play, Square } from "lucide-react";
 import type { NarrationResult, NaturalVoiceAllowance } from "@/core/core";
 import type { Length, SummaryLanguage } from "@/core/summary";
 import { useMe } from "@/lib/me";
-import {
-  primeSpeech,
-  readPreference,
-  speechSupported,
-  useVoices,
-  voicesFor,
-  writePreference,
-} from "@/lib/speech";
+import { primeSpeech, speechSupported, useVoices, voicesFor } from "@/lib/speech";
+import { readPreference, writePreference } from "@/lib/preferences";
 import { useNarration } from "@/lib/use-narration";
 import { useNaturalAudio } from "@/lib/use-natural-audio";
 

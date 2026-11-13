@@ -335,3 +335,32 @@ describe("App capacity", () => {
     }
   });
 });
+
+describe("old usage counts", () => {
+  it("are deleted after about two months, keeping this month's and last month's", async () => {
+    const usage = new InMemoryUsageCounters();
+    const clock = new ControllableClock("2026-11-13T10:00:00.000Z");
+    const core = createCore({
+      engine: new FakeSummaryEngine(),
+      translator: new FakeTranslator(),
+      catalog: new FakeVideoCatalog(),
+      store: new InMemorySummaryStore(),
+      usage,
+      members: new InMemoryMemberStore(),
+      history: new InMemoryHistoryStore(),
+      voice: new FakeNaturalVoice(),
+      narrationAudio: new InMemoryNarrationAudioStore(),
+      uploads: new InMemoryUploadStorage(),
+      clock,
+    });
+    await usage.tryUse("ip:old", "2026-09-30", 1, 10);
+    await usage.tryUse("ip:recent", "2026-10-01", 1, 10);
+    await usage.tryUse("ip:today", "2026-11-13", 1, 10);
+
+    await core.sweepOldUsage();
+
+    expect(await usage.used("ip:old", "2026-09-30")).toBe(0);
+    expect(await usage.used("ip:recent", "2026-10-01")).toBe(1);
+    expect(await usage.used("ip:today", "2026-11-13")).toBe(1);
+  });
+});

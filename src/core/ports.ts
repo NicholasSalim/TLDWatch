@@ -96,6 +96,8 @@ export interface UsageCounters {
   used(counter: string, day: string): Promise<number>;
   /** Deletes a counter on every day it was used (a deleted Member's, say). */
   forget(counter: string): Promise<void>;
+  /** Deletes every count from before a day ("2026-10-01"). */
+  forgetBefore(day: string): Promise<void>;
 }
 
 /** A Member's profile: who they are to TLDWatch, beyond their Google sign-in. */

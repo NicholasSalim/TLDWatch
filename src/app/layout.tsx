@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
 import { DeleteAccountDialog } from "@/components/delete-account-dialog";
 import { SignInDialog } from "@/components/sign-in-dialog";
 import { UploadDialog } from "@/components/upload-dialog";
+import { WelcomeNotice } from "@/components/welcome-notice";
 import "./globals.css";
 
 const bricolage = Bricolage_Grotesque({
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <SignInDialog />
         <UploadDialog />
         <DeleteAccountDialog />
+        <WelcomeNotice />
       </body>
     </html>
   );
