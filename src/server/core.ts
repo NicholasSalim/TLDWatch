@@ -10,6 +10,7 @@ import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createGeminiTranslator } from "@/adapters/gemini-translator";
 import { createSupabaseHistoryStore } from "@/adapters/supabase-history-store";
 import { naturalVoiceSettings } from "@/server/natural-voices";
+import { summaryLanguagesFromEnv } from "@/server/summary-languages";
 import { createSupabaseMemberStore } from "@/adapters/supabase-member-store";
 import { createSupabaseNarrationAudioStore } from "@/adapters/supabase-narration-audio-store";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
@@ -144,6 +145,7 @@ export const getCore: () => Core = once(() =>
       findAudio: (key) => narrationAudio().findAudio(key),
       saveAudio: (key, mp3) => narrationAudio().saveAudio(key, mp3),
     } satisfies NarrationAudioStore,
+    summaryLanguages: summaryLanguagesFromEnv(),
     naturalVoiceMonthlyCharacters: intEnv("NATURAL_VOICE_MONTHLY_CHARACTERS", 8_000),
     clock: { now: () => new Date() },
     limits: limitsFromEnv(),

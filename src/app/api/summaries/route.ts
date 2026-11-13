@@ -1,3 +1,4 @@
+import { parseSummaryLanguage } from "@/lib/summary-language";
 import { getCore } from "@/server/core";
 import { requesterFrom } from "@/server/auth";
 import type { SummaryResponse } from "@/lib/api-types";
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
     body && typeof body === "object" && name in body ? (body as Record<string, unknown>)[name] : undefined;
   const rawUrl = field("videoUrl");
   const videoUrl = typeof rawUrl === "string" ? rawUrl : "";
-  const language = field("language") === "original" ? "original" : "english";
+  const language = parseSummaryLanguage(field("language"));
 
   let response: SummaryResponse;
   try {

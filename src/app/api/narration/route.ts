@@ -1,3 +1,4 @@
+import { parseSummaryLanguage } from "@/lib/summary-language";
 import type { NarrationResult } from "@/core/core";
 import { LENGTHS, type Length } from "@/core/summary";
 import { isSameOrigin, signedInMemberId } from "@/server/auth";
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   const rawLength = field("length");
   const rawVoice = field("naturalVoiceId");
   const videoId = typeof rawVideoId === "string" ? rawVideoId : "";
-  const language = field("language") === "original" ? "original" : "english";
+  const language = parseSummaryLanguage(field("language"));
   const length: Length = LENGTHS.includes(rawLength as Length) ? (rawLength as Length) : "medium";
 
   // No Guest cookie needed: Guests always get the Standard voice.

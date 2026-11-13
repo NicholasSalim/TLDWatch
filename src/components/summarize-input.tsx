@@ -61,6 +61,10 @@ function rejectionText(rejection: SummaryRejection): string {
         : `You've used today's new summaries. You can make more ${whenLocal(rejection.resetsAt)}.`;
     case "app-capacity-reached":
       return `TLDWatch has read all the videos it can for now. Back ${whenLocal(rejection.resetsAt)}. Summaries that already exist still open.`;
+    case "language-members-only":
+      return "Reading a summary in other languages is for Members. Sign in to choose one.";
+    case "language-not-offered":
+      return "That language isn't offered. Try English or the video's original language.";
     case "summary-failed":
       return "Something went wrong while summarizing this video. Please try again in a moment.";
   }

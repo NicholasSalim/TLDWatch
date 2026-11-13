@@ -6,6 +6,7 @@ import { namesOf } from "@/lib/language-names";
 import { AccountMenu } from "@/components/account-menu";
 import { Wordmark } from "@/components/wordmark";
 import { isVideoId } from "@/core/video-url";
+import { parseSummaryLanguage } from "@/lib/summary-language";
 import { getCore } from "@/server/core";
 
 export async function generateMetadata({
@@ -49,11 +50,11 @@ async function SummaryFromLink({
 }: Pick<PageProps<"/v/[videoId]">, "params" | "searchParams">) {
   const { videoId } = await params;
   const { lang } = await searchParams;
-  const language = lang === "original" ? "original" : "english";
-  // An original-language link still opens if only the English Summary exists.
+  const language = parseSummaryLanguage(lang);
+  // A link in another language still opens if only the English Summary exists.
   const summary =
     (await getCore().readSharedSummary(videoId, language)) ??
-    (language === "original" ? await getCore().readSharedSummary(videoId) : null);
+    (language !== "english" ? await getCore().readSharedSummary(videoId) : null);
   if (!summary) return <NoSummary />;
   return (
     <>
