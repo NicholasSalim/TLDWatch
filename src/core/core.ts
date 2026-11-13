@@ -5,8 +5,8 @@
 import { DURATION_LIMIT_MINUTES } from "./limits";
 import type { Clock, SummaryEngine, SummaryStore, UsageCounters, VideoCatalog } from "./ports";
 import type { Requester } from "./requester";
-import { engineOutputSchema, type Summary } from "./summary";
-import { parseVideoUrl, type VideoUrlRejection } from "./video-url";
+import { engineOutputSchema, type Summary, type SummaryLanguage } from "./summary";
+import { isVideoId, parseVideoUrl, type VideoUrlRejection } from "./video-url";
 
 export type UsageLimits = {
   /** New Summaries a Guest (one anonymous cookie) may make per UTC day. */
@@ -77,6 +77,9 @@ type Generation =
 
 const APP_VIDEO_MINUTES = "app:video-minutes";
 
+/** Every Summary is made in English; original-language ones come with translation. */
+const SUMMARY_LANGUAGE: SummaryLanguage = "english";
+
 /** An amount reserved on one usage counter, given back if the request fails. */
 type Reservation = { counter: string; amount: number; limit: number };
 
@@ -99,7 +102,7 @@ export function createCore({
     let engineAnswered = false;
     try {
       // Another server may have stored it since this request looked.
-      const existing = await store.findSummary(videoId, "english");
+      const existing = await store.findSummary(videoId, SUMMARY_LANGUAGE);
       if (existing) return { kind: "found", summary: existing };
       let raw: unknown;
       try {
@@ -113,7 +116,7 @@ export function createCore({
       const output = engineOutputSchema.parse(raw);
       const summary = await store.saveSummary({
         videoId,
-        language: "english",
+        language: SUMMARY_LANGUAGE,
         spokenLanguage: output.spokenLanguage,
         lengths: output.lengths,
         createdAt: clock.now().toISOString(),
@@ -207,7 +210,7 @@ export function createCore({
     let reserved: Reservation[] = [];
     try {
       // A stored Summary is always served, and never counts against a limit.
-      const existing = await store.findSummary(videoId, "english");
+      const existing = await store.findSummary(videoId, SUMMARY_LANGUAGE);
       if (existing) return { status: "ready", summary: existing };
 
       // Joining a Summary someone else is already making doesn't count either.
@@ -269,7 +272,17 @@ export function createCore({
     return { left: Math.min(...lefts), dailyLimit: counters[0].limit, resetsAt: nextUtcMidnight(now) };
   }
 
-  return { requestSummary, summariesLeftToday };
+  /**
+   * Opens a Summary from its share link. It only ever reads: it never makes a
+   * Summary, looks a video up or counts against any limit. A YouTube Summary's
+   * share id is its video ID; Uploads have none, so they can't be shared.
+   */
+  async function readSharedSummary(shareId: string): Promise<Summary | null> {
+    if (!isVideoId(shareId)) return null;
+    return store.findSummary(shareId, SUMMARY_LANGUAGE);
+  }
+
+  return { requestSummary, summariesLeftToday, readSharedSummary };
 }
 
 export type Core = ReturnType<typeof createCore>;
