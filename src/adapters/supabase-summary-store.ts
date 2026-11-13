@@ -50,6 +50,18 @@ export function createSupabaseSummaryStore({
   return {
     findSummary,
 
+    async findSummaries(videoIds, language) {
+      if (videoIds.length === 0) return [];
+      const { data, error } = await db
+        .from("summaries")
+        .select(COLUMNS)
+        .in("video_id", videoIds)
+        .eq("language", language)
+        .returns<SummaryRow[]>();
+      if (error) throw error;
+      return data.map(fromRow);
+    },
+
     async saveSummary(summary) {
       // Another server instance may have stored this video first: keep theirs.
       const { error } = await db.from("summaries").upsert(

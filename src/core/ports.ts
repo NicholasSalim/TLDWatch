@@ -15,6 +15,8 @@ export interface SummaryEngine {
 
 export interface SummaryStore {
   findSummary(videoId: string, language: SummaryLanguage): Promise<Summary | null>;
+  /** The stored Summaries among these videos, in this language, in any order. */
+  findSummaries(videoIds: string[], language: SummaryLanguage): Promise<Summary[]>;
   /**
    * Stores a Summary. If one already exists for the same video and language,
    * keeps the existing one and returns it.
@@ -78,6 +80,22 @@ export interface MemberStore {
   /** Creates the profile, or returns the existing one if it's already there. */
   createMember(member: Member): Promise<Member>;
   setAutoplay(id: string, on: boolean): Promise<void>;
+}
+
+/** One video a Member has opened: the language last opened, and when. */
+export type HistoryEntry = {
+  memberId: string;
+  videoId: string;
+  language: SummaryLanguage;
+  openedAt: string;
+};
+
+export interface HistoryStore {
+  /** Adds the entry, or moves an existing one for the same video to this time and language. */
+  recordOpened(entry: HistoryEntry): Promise<void>;
+  /** Newest first; with `before`, only entries opened earlier than that time. */
+  listHistory(memberId: string, limit: number, before?: string): Promise<HistoryEntry[]>;
+  removeEntry(memberId: string, videoId: string): Promise<void>;
 }
 
 export interface Clock {

@@ -7,12 +7,14 @@
 import "server-only";
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createGeminiTranslator } from "@/adapters/gemini-translator";
+import { createSupabaseHistoryStore } from "@/adapters/supabase-history-store";
 import { createSupabaseMemberStore } from "@/adapters/supabase-member-store";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
 import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
 import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
 import type {
+  HistoryStore,
   MemberStore,
   SummaryEngine,
   SummaryStore,
@@ -62,6 +64,13 @@ const members = once(() =>
   }),
 );
 
+const history = once(() =>
+  createSupabaseHistoryStore({
+    url: requireEnv("SUPABASE_URL"),
+    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  }),
+);
+
 /** Limits come from the environment, falling back to the core's defaults. */
 function limitsFromEnv(): UsageLimits {
   return {
@@ -88,6 +97,7 @@ export const getCore: () => Core = once(() =>
     } satisfies VideoCatalog,
     store: {
       findSummary: (videoId, language) => store().findSummary(videoId, language),
+      findSummaries: (videoIds, language) => store().findSummaries(videoIds, language),
       saveSummary: (summary) => store().saveSummary(summary),
     } satisfies SummaryStore,
     usage: {
@@ -100,6 +110,11 @@ export const getCore: () => Core = once(() =>
       createMember: (member) => members().createMember(member),
       setAutoplay: (id, on) => members().setAutoplay(id, on),
     } satisfies MemberStore,
+    history: {
+      recordOpened: (entry) => history().recordOpened(entry),
+      listHistory: (memberId, limit, before) => history().listHistory(memberId, limit, before),
+      removeEntry: (memberId, videoId) => history().removeEntry(memberId, videoId),
+    } satisfies HistoryStore,
     clock: { now: () => new Date() },
     limits: limitsFromEnv(),
     onFailure: (error, { videoId }) =>

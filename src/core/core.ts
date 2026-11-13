@@ -5,6 +5,7 @@
 import { DURATION_LIMIT_MINUTES } from "./limits";
 import type {
   Clock,
+  HistoryStore,
   Member,
   MemberStore,
   SummaryEngine,
@@ -52,6 +53,7 @@ export type CoreDeps = {
   store: SummaryStore;
   usage: UsageCounters;
   members: MemberStore;
+  history: HistoryStore;
   clock: Clock;
   limits?: UsageLimits;
   /**
@@ -102,6 +104,17 @@ export type SummaryResult =
     }
   | SummaryRejection;
 
+/** How many History entries come back at a time. */
+const HISTORY_PAGE = 50;
+
+export type HistoryItem = {
+  videoId: string;
+  language: SummaryLanguage;
+  openedAt: string;
+  /** The Short overview, to recognise the video by. */
+  preview: string;
+};
+
 export type JoinResult =
   | { status: "member"; member: Member }
   | { status: "rejected"; reason: "adult-confirmation-required" };
@@ -129,6 +142,7 @@ export function createCore({
   store,
   usage,
   members,
+  history,
   clock,
   limits = DEFAULT_LIMITS,
   // Reading plus translating must fit inside the route's 120 seconds.
@@ -246,6 +260,21 @@ export function createCore({
     requester,
     language = "english",
   }: SummaryRequest): Promise<SummaryResult> {
+    const result = await summaryIn(language, videoUrl, requester);
+    if (result.status === "ready" && requester.kind === "member") {
+      const { videoId, language: shown } = result.summary;
+      await remember(requester.memberId, videoId, shown).catch((error) =>
+        onFailure?.(error, { videoId }),
+      );
+    }
+    return result;
+  }
+
+  async function summaryIn(
+    language: SummaryLanguage,
+    videoUrl: string,
+    requester: Requester,
+  ): Promise<SummaryResult> {
     const english = await requestEnglishSummary(videoUrl, requester);
     if (language === "english" || english.status !== "ready") return english;
     const original = await translateOnce(english.summary);
@@ -415,8 +444,81 @@ export function createCore({
     await members.setAutoplay(memberId, on);
   }
 
+  /**
+   * Notes that a Member opened a Summary, adding it to their History or
+   * moving it to the top. Guests have no History; unknown Summaries are ignored.
+   * Never fails the request it belongs to.
+   */
+  async function recordOpened(
+    requester: Requester,
+    videoId: string,
+    language: SummaryLanguage,
+  ): Promise<void> {
+    if (requester.kind !== "member" || !isVideoId(videoId)) return;
+    try {
+      if (!(await store.findSummary(videoId, language))) return;
+      await remember(requester.memberId, videoId, language);
+    } catch (error) {
+      onFailure?.(error, { videoId });
+    }
+  }
+
+  /** Writes the History entry for a Summary already known to exist. */
+  async function remember(memberId: string, videoId: string, language: SummaryLanguage) {
+    await history.recordOpened({ memberId, videoId, language, openedAt: clock.now().toISOString() });
+  }
+
+  /**
+   * A Member's History, newest first, each with a short preview to recognise
+   * it by. Pass the oldest `openedAt` shown as `before` for the next page.
+   */
+  async function listHistory(
+    memberId: string,
+    { before }: { before?: string } = {},
+  ): Promise<HistoryItem[]> {
+    const entries = await history.listHistory(memberId, HISTORY_PAGE, before);
+    const ids = entries.map((e) => e.videoId);
+    const [english, original] = await Promise.all([
+      store.findSummaries(ids, "english"),
+      store.findSummaries(
+        entries.filter((e) => e.language === "original").map((e) => e.videoId),
+        "original",
+      ),
+    ]);
+    const byId = (list: Summary[]) => new Map(list.map((s) => [s.videoId, s]));
+    const englishById = byId(english);
+    const originalById = byId(original);
+
+    const items: HistoryItem[] = [];
+    for (const entry of entries) {
+      // The original-language Summary if it's there, else the English one.
+      const summary =
+        (entry.language === "original" && originalById.get(entry.videoId)) ||
+        englishById.get(entry.videoId);
+      if (!summary) {
+        // Its Summary is gone: forget the entry rather than keep a dead link.
+        await history.removeEntry(memberId, entry.videoId).catch(() => {});
+        continue;
+      }
+      items.push({
+        videoId: entry.videoId,
+        language: summary.language,
+        openedAt: entry.openedAt,
+        preview: summary.lengths.short.overview,
+      });
+    }
+    return items;
+  }
+
+  async function removeFromHistory(memberId: string, videoId: string): Promise<void> {
+    await history.removeEntry(memberId, videoId);
+  }
+
   return {
     requestSummary,
+    recordOpened,
+    listHistory,
+    removeFromHistory,
     summariesLeftToday,
     readSharedSummary,
     joinAsMember,

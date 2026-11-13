@@ -34,13 +34,17 @@ export async function signedInUserId(): Promise<string | null> {
   return data.user?.id ?? null;
 }
 
+/** The signed-in Member's id: signed in, and joined as a Member. Otherwise null. */
+export async function signedInMemberId(): Promise<string | null> {
+  const userId = await signedInUserId().catch(() => null);
+  if (!userId) return null;
+  return (await getCore().memberSettings(userId).catch(() => null)) ? userId : null;
+}
+
 /** Who is asking: a Member if they're signed in and joined, otherwise a Guest. */
 export async function requesterFrom(request: Request): Promise<Requester> {
-  const userId = await signedInUserId().catch(() => null);
-  if (userId && (await getCore().memberSettings(userId))) {
-    return { kind: "member", memberId: userId };
-  }
-  return guestFrom(request);
+  const memberId = await signedInMemberId();
+  return memberId ? { kind: "member", memberId } : guestFrom(request);
 }
 
 /**

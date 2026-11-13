@@ -5,6 +5,7 @@ import {
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
+  InMemoryHistoryStore,
   InMemoryMemberStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -20,7 +21,7 @@ function setup() {
   const engine = new FakeSummaryEngine();
   const catalog = new FakeVideoCatalog();
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, translator: new FakeTranslator(), catalog, store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog, store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), history: new InMemoryHistoryStore(), clock: fixedClock() });
   return { core, engine, catalog, store };
 }
 

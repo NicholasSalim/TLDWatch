@@ -58,7 +58,7 @@ async function SummaryFromLink({
   return (
     <>
       <h1 className="sr-only">Video summary</h1>
-      <SummaryCard initial={summary} languageNames={namesOf(summary.spokenLanguage)} />
+      <SummaryCard initial={summary} languageNames={namesOf(summary.spokenLanguage)} recordOpen />
     </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { narrationScript } from "@/core/narration";
 import type { Length, Summary, SummaryLanguage } from "@/core/summary";
 import { fetchSummary } from "@/lib/summary-client";
@@ -18,6 +18,7 @@ export function SummaryCard({
   initialLength = "medium",
   translationFailed = false,
   languageNames,
+  recordOpen = false,
 }: {
   initial: Summary;
   initialLength?: Length;
@@ -25,8 +26,20 @@ export function SummaryCard({
   translationFailed?: boolean;
   /** Pass from the server when it renders the card, so both sides name the language alike. */
   languageNames?: LanguageNames;
+  /** Opened from a share link: tell the server, so it lands in a Member's History. */
+  recordOpen?: boolean;
 }) {
   const [length, setLength] = useState<Length>(initialLength);
+
+  // Requests made from the homepage record themselves; a share link doesn't.
+  useEffect(() => {
+    if (!recordOpen) return;
+    fetch("/api/history/opened", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId: initial.videoId, language: initial.language }),
+    }).catch(() => {});
+  }, [recordOpen, initial.videoId, initial.language]);
   const [language, setLanguage] = useState<SummaryLanguage>(
     translationFailed ? "original" : initial.language,
   );

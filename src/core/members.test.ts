@@ -4,6 +4,7 @@ import {
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
+  InMemoryHistoryStore,
   InMemoryMemberStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
@@ -19,6 +20,7 @@ function setup() {
     store: new InMemorySummaryStore(),
     usage: new InMemoryUsageCounters(),
     members,
+    history: new InMemoryHistoryStore(),
     clock: fixedClock("2026-11-13T10:00:00.000Z"),
   });
   return { core, members };
