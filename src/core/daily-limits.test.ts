@@ -6,6 +6,7 @@ import {
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
+  InMemoryMemberStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   validEngineOutput,
@@ -37,7 +38,7 @@ function setup(limits: Partial<UsageLimits> = {}) {
     engine,
     catalog,
     store: new InMemorySummaryStore(),
-    usage: new InMemoryUsageCounters(),
+    usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
     clock,
     limits: { ...LIMITS, ...limits },
   });
@@ -146,7 +147,7 @@ describe("Guest daily limits", () => {
       engine,
       catalog: new FakeVideoCatalog(),
       store,
-      usage: new InMemoryUsageCounters(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
       clock: new ControllableClock(),
       limits: LIMITS,
     });
@@ -207,6 +208,7 @@ describe("Usage counter failures", () => {
       catalog: new FakeVideoCatalog(),
       store: new InMemorySummaryStore(),
       usage,
+      members: new InMemoryMemberStore(),
       clock: new ControllableClock(),
       limits: LIMITS,
     });
@@ -293,6 +295,7 @@ describe("App capacity", () => {
         catalog: new FakeVideoCatalog(),
         store: new InMemorySummaryStore(),
         usage,
+        members: new InMemoryMemberStore(),
         clock: new ControllableClock(),
         limits: { ...LIMITS, dailyVideoMinutes: 5 },
         generationTimeoutMs: 1000,

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { SummaryCard } from "@/components/summary-card";
 import { namesOf } from "@/lib/language-names";
+import { AccountMenu } from "@/components/account-menu";
 import { Wordmark } from "@/components/wordmark";
 import { isVideoId } from "@/core/video-url";
 import { getCore } from "@/server/core";
@@ -28,8 +29,9 @@ export async function generateMetadata({
 export default function SharedSummaryPage({ params, searchParams }: PageProps<"/v/[videoId]">) {
   return (
     <div className="backdrop relative isolate flex min-h-dvh flex-col overflow-hidden">
-      <header className="mx-auto flex w-full max-w-5xl items-center px-5 pt-6 sm:px-8">
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 pt-6 sm:px-8">
         <Wordmark />
+        <AccountMenu />
       </header>
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-10 pb-24 sm:px-8">

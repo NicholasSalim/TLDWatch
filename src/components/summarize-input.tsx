@@ -8,6 +8,7 @@ import type { SummariesLeft, SummaryRejection } from "@/core/core";
 import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { useAutoplay } from "@/lib/autoplay";
+import { openSignIn, useMe } from "@/lib/me";
 import { fetchSummary } from "@/lib/summary-client";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
@@ -31,7 +32,7 @@ const LANGUAGES = [
 type Language = (typeof LANGUAGES)[number]["value"];
 
 type Notice =
-  | { kind: "error"; text: string }
+  | { kind: "error"; text: string; offerMembership?: boolean }
   | { kind: "info"; text: string }
   | { kind: "summarizing"; videoId: string }
   | { kind: "summary"; summary: Summary; translationFailed: boolean };
@@ -85,6 +86,7 @@ export function SummarizeInput() {
   const [length, setLength] = useState<Length>("medium");
   const [language, setLanguage] = useState<Language>("english");
   const [autoplay, setAutoplay] = useAutoplay();
+  const me = useMe();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [summariesLeft, setSummariesLeft] = useState<SummariesLeft | null>(null);
   const wrapperRef = useRef<HTMLFormElement>(null);
@@ -145,7 +147,14 @@ export function SummarizeInput() {
     setNotice(
       result.status === "ready"
         ? { kind: "summary", summary: result.summary, translationFailed: !!result.translationFailed }
-        : { kind: "error", text: rejectionText(result) },
+        : {
+            kind: "error",
+            text: rejectionText(result),
+            // Signing up would help: point straight at it.
+            offerMembership:
+              ("memberDailyLimit" in result && !!result.memberDailyLimit) ||
+              ("memberLimitMinutes" in result && !!result.memberLimitMinutes),
+          },
     );
   };
 
@@ -185,10 +194,12 @@ export function SummarizeInput() {
             title="Upload a video file"
             onClick={(e) => {
               e.stopPropagation();
-              setNotice({
-                kind: "info",
-                text: "Uploading a video file is for Members. Sign in with Google to upload clips from TikTok, Instagram or your device.",
-              });
+              // Upload is for Members: a Guest is asked to sign in first.
+              if (me?.member) {
+                setNotice({ kind: "info", text: "Uploading a video file is coming soon." });
+              } else {
+                openSignIn();
+              }
             }}
             className="grid size-11 shrink-0 place-items-center rounded-full text-haze transition-colors hover:bg-white/8 hover:text-mist focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lumen"
           >
@@ -350,6 +361,15 @@ export function SummarizeInput() {
                   )}
                 >
                   {notice.text}
+                  {notice.kind === "error" && notice.offerMembership && (
+                    <button
+                      type="button"
+                      onClick={openSignIn}
+                      className="mt-3 flex h-9 items-center rounded-full bg-lumen px-4 text-sm font-medium text-ink transition-colors hover:bg-[#f8d488] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lumen"
+                    >
+                      Become a Member
+                    </button>
+                  )}
                 </p>
               )}
             </motion.div>

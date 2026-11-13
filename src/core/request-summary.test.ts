@@ -5,6 +5,7 @@ import {
   FakeSummaryEngine,
   FakeTranslator,
   FakeVideoCatalog,
+  InMemoryMemberStore,
   InMemorySummaryStore,
   InMemoryUsageCounters,
   fixedClock,
@@ -16,7 +17,7 @@ const guest: Requester = { kind: "guest", guestId: "guest-1", ipHash: "ip-1" };
 
 function setup(engine = new FakeSummaryEngine()) {
   const store = new InMemorySummaryStore();
-  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), clock: fixedClock() });
+  const core = createCore({ engine, translator: new FakeTranslator(), catalog: new FakeVideoCatalog(), store, usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(), clock: fixedClock() });
   return { core, engine, store };
 }
 
@@ -86,7 +87,7 @@ describe("requestSummary", () => {
       engine,
       catalog: new FakeVideoCatalog(),
       store: slowFirstLookups,
-      usage: new InMemoryUsageCounters(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
       clock: fixedClock(),
     });
 
@@ -112,7 +113,7 @@ describe("requestSummary", () => {
         engine,
         catalog: new FakeVideoCatalog(),
         store,
-        usage: new InMemoryUsageCounters(),
+        usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
         clock: fixedClock(),
         generationTimeoutMs: 90_000,
       });
@@ -140,7 +141,7 @@ describe("requestSummary", () => {
       engine: new FakeSummaryEngine(),
       catalog: new FakeVideoCatalog(),
       store,
-      usage: new InMemoryUsageCounters(),
+      usage: new InMemoryUsageCounters(), members: new InMemoryMemberStore(),
       clock: fixedClock(),
     });
 

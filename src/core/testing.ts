@@ -5,6 +5,8 @@
 import type { Length, LengthContent } from "./summary";
 import type {
   Clock,
+  Member,
+  MemberStore,
   Translator,
   SummaryEngine,
   SummaryStore,
@@ -164,6 +166,26 @@ export class InMemoryUsageCounters implements UsageCounters {
 
   async used(counter: string, day: string) {
     return this.counts.get(`${counter}@${day}`) ?? 0;
+  }
+}
+
+export class InMemoryMemberStore implements MemberStore {
+  private members = new Map<string, Member>();
+
+  async findMember(id: string) {
+    return this.members.get(id) ?? null;
+  }
+
+  async createMember(member: Member) {
+    const existing = this.members.get(member.id);
+    if (existing) return existing;
+    this.members.set(member.id, member);
+    return member;
+  }
+
+  async setAutoplay(id: string, on: boolean) {
+    const member = this.members.get(id);
+    if (member) this.members.set(id, { ...member, autoplay: on });
   }
 }
 

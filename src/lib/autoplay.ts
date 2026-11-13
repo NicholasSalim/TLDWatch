@@ -1,11 +1,12 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { updateMember, useMe } from "@/lib/me";
 import { readPreference, writePreference } from "@/lib/speech";
 
 /**
- * The "Autoplay Narration" setting. Off by default. A Guest's setting lives
- * in this browser's localStorage, shared by every tab.
+ * The "Autoplay Narration" setting. Off by default. A Member's setting is
+ * saved to their account; a Guest's lives in this browser's localStorage.
  */
 
 const listeners = new Set<() => void>();
@@ -19,13 +20,35 @@ function subscribe(listener: () => void) {
   };
 }
 
-const read = () => readPreference("autoplay") === "on";
+const readLocal = () => readPreference("autoplay") === "on";
 
-function write(on: boolean) {
+function writeLocal(on: boolean) {
   writePreference("autoplay", on ? "on" : "off");
   listeners.forEach((listener) => listener());
 }
 
+function saveToAccount(on: boolean) {
+  updateMember({ autoplay: on });
+  fetch("/api/me/autoplay", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ on }),
+  })
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    })
+    .catch(() => updateMember({ autoplay: !on })); // Not saved: show the truth again.
+}
+
+const ignore = () => {};
+
+/**
+ * [setting, change]. Off until it's known whether this is a Member, so a
+ * Member's account setting is never overridden by this browser's.
+ */
 export function useAutoplay(): [boolean, (on: boolean) => void] {
-  return [useSyncExternalStore(subscribe, read, () => false), write];
+  const local = useSyncExternalStore(subscribe, readLocal, () => false);
+  const me = useMe();
+  if (!me) return [false, ignore];
+  return me.member ? [me.member.autoplay, saveToAccount] : [local, writeLocal];
 }
