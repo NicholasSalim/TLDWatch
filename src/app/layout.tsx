@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   title: "TLDWatch: TL;DW for YouTube",
   description:
     "Paste a YouTube link. Read the summary, or listen to it, in about a minute.",
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "TLDWatch", statusBarStyle: "black" },
 };
 
 export const viewport: Viewport = {
