@@ -14,10 +14,12 @@ import { summaryLanguagesFromEnv } from "@/server/summary-languages";
 import { createSupabaseMemberStore } from "@/adapters/supabase-member-store";
 import { createSupabaseNarrationAudioStore } from "@/adapters/supabase-narration-audio-store";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
+import { createSupabaseUploadStorage } from "@/adapters/supabase-upload-storage";
 import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
 import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
 import type {
+  UploadStorage,
   NarrationAudioStore,
   NaturalVoice,
   HistoryStore,
@@ -88,6 +90,13 @@ const narrationAudio = once(() =>
   }),
 );
 
+const uploadStorage = once(() =>
+  createSupabaseUploadStorage({
+    url: requireEnv("SUPABASE_URL"),
+    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+  }),
+);
+
 /** Limits come from the environment, falling back to the core's defaults. */
 function limitsFromEnv(): UsageLimits {
   return {
@@ -105,6 +114,8 @@ export const getCore: () => Core = once(() =>
   createCore({
     engine: {
       summarizeYouTubeVideo: (videoId) => engine().summarizeYouTubeVideo(videoId),
+      summarizeVideoFile: (video, maxDurationSeconds) =>
+        engine().summarizeVideoFile(video, maxDurationSeconds),
     } satisfies SummaryEngine,
     translator: {
       translateSummary: (lengths, target) => translator().translateSummary(lengths, target),
@@ -147,6 +158,13 @@ export const getCore: () => Core = once(() =>
     } satisfies NarrationAudioStore,
     summaryLanguages: summaryLanguagesFromEnv(),
     naturalVoiceMonthlyCharacters: intEnv("NATURAL_VOICE_MONTHLY_CHARACTERS", 8_000),
+    uploads: {
+      createUploadUrl: (path) => uploadStorage().createUploadUrl(path),
+      read: (path) => uploadStorage().read(path),
+      remove: (path) => uploadStorage().remove(path),
+      removeOlderThan: (cutoff) => uploadStorage().removeOlderThan(cutoff),
+    } satisfies UploadStorage,
+    uploadMaxMb: intEnv("UPLOAD_MAX_MB", 50),
     clock: { now: () => new Date() },
     limits: limitsFromEnv(),
     onFailure: (error, { videoId }) =>

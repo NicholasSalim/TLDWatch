@@ -37,6 +37,8 @@ const FALLBACK_NOTES: Record<Exclude<NarrationResult, { voice: "natural" }>["rea
     "This month's Natural voice allowance is used up, so the Standard voice is reading instead.",
   "natural-voice-unavailable":
     "The Natural voice isn't available right now, so the Standard voice is reading instead.",
+  // An Upload is private, and Natural voice audio is shared: the Standard voice reads it.
+  "upload-not-eligible": null,
 };
 
 /** Enough left for a Detailed narration: below this, the allowance is "almost used up". */

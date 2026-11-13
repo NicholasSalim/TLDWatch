@@ -11,6 +11,7 @@ import {
   InMemoryMemberStore,
   InMemoryNarrationAudioStore,
   InMemorySummaryStore,
+  InMemoryUploadStorage,
   InMemoryUsageCounters,
   validEngineOutput,
 } from "./testing";
@@ -34,6 +35,7 @@ function setup(monthlyCharacters = 10_000) {
     history: new InMemoryHistoryStore(),
     voice,
     narrationAudio: audio,
+    uploads: new InMemoryUploadStorage(),
     clock,
     naturalVoiceMonthlyCharacters: monthlyCharacters,
   });
@@ -186,6 +188,7 @@ describe("requestNarration", () => {
         history: new InMemoryHistoryStore(),
         voice,
         narrationAudio: audio,
+        uploads: new InMemoryUploadStorage(),
         clock: new ControllableClock("2026-11-13T10:00:00.000Z"),
       });
     const [one, two] = [instance(), instance()];

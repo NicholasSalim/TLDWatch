@@ -9,7 +9,7 @@ import {
   type Summary,
   type SummaryLanguage,
 } from "@/core/summary";
-import { fetchSummary } from "@/lib/summary-client";
+import { fetchSummary, fetchUploadSummary } from "@/lib/summary-client";
 import { useAutoplay } from "@/lib/autoplay";
 import { namesOf, type LanguageNames } from "@/lib/language-names";
 import { useMe } from "@/lib/me";
@@ -89,7 +89,9 @@ export function SummaryCard({
 
     fetching.current.add(next);
     setLoading(next);
-    const result = await fetchSummary(`https://youtu.be/${initial.videoId}`, next);
+    const result = initial.ownerId
+      ? await fetchUploadSummary(initial.videoId, next)
+      : await fetchSummary(`https://youtu.be/${initial.videoId}`, next);
     fetching.current.delete(next);
     setLoading((current) => (current === next ? null : current));
 

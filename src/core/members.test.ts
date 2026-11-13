@@ -9,6 +9,7 @@ import {
   InMemoryMemberStore,
   InMemoryNarrationAudioStore,
   InMemorySummaryStore,
+  InMemoryUploadStorage,
   InMemoryUsageCounters,
   fixedClock,
 } from "./testing";
@@ -22,7 +23,7 @@ function setup() {
     store: new InMemorySummaryStore(),
     usage: new InMemoryUsageCounters(),
     members,
-    history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(),
+    history: new InMemoryHistoryStore(), voice: new FakeNaturalVoice(), narrationAudio: new InMemoryNarrationAudioStore(), uploads: new InMemoryUploadStorage(),
     clock: fixedClock("2026-11-13T10:00:00.000Z"),
   });
   return { core, members };
