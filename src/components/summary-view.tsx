@@ -83,12 +83,15 @@ export function SummaryView({
   onLengthChange,
   languageControl,
   languageNames,
+  narration,
 }: {
   summary: Summary;
   length: Length;
   onLengthChange: (length: Length) => void;
   languageControl: LanguageControl;
   languageNames?: LanguageNames;
+  /** The Narration player for what's on screen. */
+  narration?: React.ReactNode;
 }) {
   // Every Length arrives with the Summary, so switching is local and instant.
   const content = summary.lengths[length];
@@ -140,6 +143,8 @@ export function SummaryView({
           </p>
         )}
       </div>
+
+      {narration}
 
       <Verdict verdict={content.verdict} />
 
