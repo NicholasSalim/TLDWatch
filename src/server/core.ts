@@ -127,21 +127,25 @@ export const getCore: () => Core = once(() =>
       findSummary: (videoId, language) => store().findSummary(videoId, language),
       findSummaries: (videoIds, language) => store().findSummaries(videoIds, language),
       saveSummary: (summary) => store().saveSummary(summary),
+      deleteOwnedBy: (ownerId) => store().deleteOwnedBy(ownerId),
     } satisfies SummaryStore,
     usage: {
       tryUse: (counter, day, amount, limit) => usage().tryUse(counter, day, amount, limit),
       giveBack: (counter, day, amount) => usage().giveBack(counter, day, amount),
       used: (counter, day) => usage().used(counter, day),
+      forget: (counter) => usage().forget(counter),
     } satisfies UsageCounters,
     members: {
       findMember: (id) => members().findMember(id),
       createMember: (member) => members().createMember(member),
       setAutoplay: (id, on) => members().setAutoplay(id, on),
+      deleteMember: (id) => members().deleteMember(id),
     } satisfies MemberStore,
     history: {
       recordOpened: (entry) => history().recordOpened(entry),
       listHistory: (memberId, limit, before) => history().listHistory(memberId, limit, before),
       removeEntry: (memberId, videoId) => history().removeEntry(memberId, videoId),
+      removeAllFor: (memberId) => history().removeAllFor(memberId),
     } satisfies HistoryStore,
     voice: {
       // Read from settings, so the API key is only needed to actually speak.
@@ -163,6 +167,7 @@ export const getCore: () => Core = once(() =>
       read: (path) => uploadStorage().read(path),
       remove: (path) => uploadStorage().remove(path),
       removeOlderThan: (cutoff) => uploadStorage().removeOlderThan(cutoff),
+      removeAllFor: (memberId) => uploadStorage().removeAllFor(memberId),
     } satisfies UploadStorage,
     uploadMaxMb: intEnv("UPLOAD_MAX_MB", 50),
     clock: { now: () => new Date() },

@@ -42,6 +42,15 @@ export function createSupabaseUploadStorage({
       if (error) throw error;
     },
 
+    async removeAllFor(memberId) {
+      const { data: files, error } = await bucket.list(memberId, { limit: 1000 });
+      if (error) throw error;
+      if (files.length) {
+        const { error: removeError } = await bucket.remove(files.map((f) => `${memberId}/${f.name}`));
+        if (removeError) throw removeError;
+      }
+    },
+
     async removeOlderThan(cutoff) {
       // One folder per Member; each holds at most a few files waiting to be summarized.
       const { data: folders, error } = await bucket.list("", { limit: 1000 });

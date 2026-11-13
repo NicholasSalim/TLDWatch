@@ -38,6 +38,11 @@ export function createSupabaseUsageCounters({
       if (error) throw error;
     },
 
+    async forget(counter) {
+      const { error } = await db.from("usage_counters").delete().eq("counter", counter);
+      if (error) throw error;
+    },
+
     async used(counter, day) {
       const { data, error } = await db
         .from("usage_counters")

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque, Instrument_Sans } from "next/font/google";
+import { DeleteAccountDialog } from "@/components/delete-account-dialog";
 import { SignInDialog } from "@/components/sign-in-dialog";
 import { UploadDialog } from "@/components/upload-dialog";
 import "./globals.css";
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <SignInDialog />
         <UploadDialog />
+        <DeleteAccountDialog />
       </body>
     </html>
   );

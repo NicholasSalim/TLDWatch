@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { History, LogOut } from "lucide-react";
+import { History, LogOut, Trash2 } from "lucide-react";
+import { openDeleteAccount } from "@/components/delete-account-dialog";
 import { openSignIn, useMe } from "@/lib/me";
 
 /** Top-right of every page: "Sign in" for a Guest, the Member's menu once signed in. */
@@ -56,6 +57,14 @@ export function AccountMenu() {
             Sign out
           </button>
         </form>
+        <button
+          type="button"
+          onClick={openDeleteAccount}
+          className="mt-1 flex w-full items-center gap-2 rounded-lg border-t border-white/8 px-2 py-2 text-left text-sm text-negative hover:bg-white/8 focus-visible:outline-2 focus-visible:outline-lumen"
+        >
+          <Trash2 className="size-4" aria-hidden />
+          Delete account…
+        </button>
       </div>
     </details>
   );

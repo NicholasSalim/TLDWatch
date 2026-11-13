@@ -49,6 +49,11 @@ export function createSupabaseMemberStore({
       return stored;
     },
 
+    async deleteMember(id) {
+      const { error } = await db.from("members").delete().eq("id", id);
+      if (error) throw error;
+    },
+
     async setAutoplay(id, on) {
       const { error } = await db.from("members").update({ autoplay: on }).eq("id", id);
       if (error) throw error;
