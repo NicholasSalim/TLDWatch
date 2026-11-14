@@ -39,6 +39,7 @@ import { isUploadId } from "./upload-id";
 import {
   checkFile,
   FILE_HEAD_BYTES,
+  kindOfMimeType,
   LONG_TEXT_MAX_CHARACTERS,
   PDF_MAX_PAGES,
   pdfPageCount,
@@ -865,6 +866,11 @@ export function createCore({
       // The browser checked it, but the server never takes its word: judge the bytes again.
       const check = checkFile({ name: "", head: stored.bytes.subarray(0, FILE_HEAD_BYTES) });
       if (!check.ok || !UPLOADABLE_KINDS.has(check.kind)) {
+        return { status: "rejected", reason: "upload-not-supported" };
+      }
+      // A file declared as one kind whose bytes are another is a disguise (or a mistake): refuse it.
+      const declared = kindOfMimeType(stored.mimeType);
+      if (declared && declared !== check.kind) {
         return { status: "rejected", reason: "upload-not-supported" };
       }
       const file = { bytes: stored.bytes, mimeType: check.mimeType };

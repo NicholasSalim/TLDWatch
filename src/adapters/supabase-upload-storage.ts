@@ -34,7 +34,8 @@ export function createSupabaseUploadStorage({
         if (/not found/i.test(error.message)) return null;
         throw error;
       }
-      return { bytes: new Uint8Array(await data.arrayBuffer()), mimeType: data.type || "video/mp4" };
+      // The type it was uploaded as (empty if none): the core checks it against the bytes.
+      return { bytes: new Uint8Array(await data.arrayBuffer()), mimeType: data.type || "" };
     },
 
     async remove(path) {
