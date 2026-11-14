@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { isSameOrigin, signedInMemberId } from "@/server/auth";
 import { getCore } from "@/server/core";
 
@@ -5,6 +6,8 @@ const noStore = { "Cache-Control": "no-store" };
 
 /** The signed-in Member's History, newest first; ?before=<openedAt> for older entries. */
 export async function GET(request: Request) {
+  // Per visitor (it reads their cookie): never prerendered at build time.
+  await connection();
   const memberId = await signedInMemberId();
   if (!memberId) return Response.json({ error: "not-a-member" }, { status: 401, headers: noStore });
   const before = new URL(request.url).searchParams.get("before") ?? undefined;

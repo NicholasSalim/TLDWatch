@@ -1,9 +1,12 @@
+import { connection } from "next/server";
 import type { Me } from "@/lib/api-types";
 import { authClient } from "@/server/auth";
 import { getCore } from "@/server/core";
 
 /** Who's signed in, for the header and the autoplay setting. */
 export async function GET() {
+  // Per visitor (it reads their cookie): never prerendered at build time.
+  await connection();
   const headers = { "Cache-Control": "no-store" };
   try {
     const { data } = await (await authClient()).auth.getUser();

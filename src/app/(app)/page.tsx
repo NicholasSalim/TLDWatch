@@ -1,16 +1,9 @@
 import Link from "next/link";
 import { SummarizeInput } from "@/components/summarize-input";
-import { AccountMenu } from "@/components/account-menu";
-import { Wordmark } from "@/components/wordmark";
 
 export default function Home() {
   return (
-    <div className="backdrop relative isolate flex min-h-dvh flex-col overflow-hidden">
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 pt-6 sm:px-8">
-        <Wordmark />
-        <AccountMenu />
-      </header>
-
+    <>
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-4 pt-16 pb-24 sm:px-8">
         <h1 className="max-w-[16ch] text-center font-heading text-[clamp(2.6rem,7vw,4.75rem)] leading-[0.95] font-bold tracking-[-0.035em] text-balance text-mist">
           Skip the video. Keep the point.
@@ -39,6 +32,6 @@ export default function Home() {
           Privacy
         </Link>
       </footer>
-    </div>
+    </>
   );
 }
