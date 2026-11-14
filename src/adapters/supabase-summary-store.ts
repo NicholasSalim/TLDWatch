@@ -16,9 +16,10 @@ type SummaryRow = {
   created_at: string;
   owner_id: string | null;
   guest_owner_id: string | null;
+  source: NonNullable<Summary["source"]>;
 };
 
-const COLUMNS = "video_id, language, spoken_language, lengths, created_at, owner_id, guest_owner_id";
+const COLUMNS = "video_id, language, spoken_language, lengths, created_at, owner_id, guest_owner_id, source";
 const GUEST_PREFIX = "guest-";
 
 const fromRow = (row: SummaryRow): Summary => ({
@@ -30,6 +31,8 @@ const fromRow = (row: SummaryRow): Summary => ({
   // The core knows one owner key; the table keeps Members and Guests apart.
   ...(row.owner_id && { ownerId: row.owner_id }),
   ...(row.guest_owner_id && { ownerId: GUEST_PREFIX + row.guest_owner_id }),
+  // A video is the default, and stays implicit.
+  ...(row.source !== "video" && { source: row.source }),
 });
 
 /** An owner key as the two owner columns. */
@@ -114,6 +117,7 @@ export function createSupabaseSummaryStore({
           lengths: summary.lengths,
           created_at: summary.createdAt,
           ...ownerColumns(summary.ownerId),
+          source: summary.source ?? "video",
         },
         { onConflict: "video_id,language", ignoreDuplicates: true },
       );

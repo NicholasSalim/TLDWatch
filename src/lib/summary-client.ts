@@ -27,6 +27,20 @@ export async function fetchUploadSummary(
   }
 }
 
+/** Asks the server to summarize a pasted text. Network failures come back as summary-failed. */
+export async function fetchTextSummary(text: string): Promise<SummaryResponse> {
+  try {
+    const response = await fetch("/api/texts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    return (await response.json()) as SummaryResponse;
+  } catch {
+    return { status: "rejected", reason: "summary-failed" };
+  }
+}
+
 /** Asks the server for a Summary. Network failures come back as summary-failed. */
 export async function fetchSummary(
   videoUrl: string,

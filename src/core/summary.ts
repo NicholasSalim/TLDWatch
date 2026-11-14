@@ -109,4 +109,9 @@ export type Summary = {
   createdAt: string;
   /** An Upload Summary's owner: only they can read it. Absent for YouTube Summaries. */
   ownerId?: string;
+  /** What was summarized; absent means a video (every YouTube Summary). */
+  source?: SummarySource;
 };
+
+/** What a Summary was made from. It decides its shape: only video and audio have Timestamps. */
+export type SummarySource = "video" | "audio" | "pdf" | "image" | "text";

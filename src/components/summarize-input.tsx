@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowUp,
@@ -17,14 +18,14 @@ import {
 } from "lucide-react";
 import type { SummariesLeft } from "@/core/core";
 import { judgeText, LONG_TEXT_MAX_CHARACTERS, UPLOADABLE_KINDS, type FileKind } from "@/core/file-kind";
-import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summary";
+import { LENGTH_LABELS, LENGTHS, type Length, type Summary, type SummarySource } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { useAutoplay } from "@/lib/autoplay";
 import { inspectFile, KIND_NAMES, UPLOAD_KINDS, UPLOAD_MAX_MB } from "@/lib/check-file";
 import { openSignIn } from "@/lib/me";
 import { openUpload } from "@/components/upload-dialog";
 import { rejectionText } from "@/lib/rejection-text";
-import { fetchSummary } from "@/lib/summary-client";
+import { fetchSummary, fetchTextSummary } from "@/lib/summary-client";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
 import { SummaryCard } from "@/components/summary-card";
@@ -55,11 +56,12 @@ type Language = (typeof LANGUAGES)[number]["value"];
 type Notice =
   | { kind: "error"; text: string; offerMembership?: boolean }
   | { kind: "info"; text: string }
-  | { kind: "summarizing"; videoId: string }
+  | { kind: "summarizing"; videoId: string; source?: SummarySource }
   | { kind: "summary"; summary: Summary; translationFailed: boolean };
 
 export function SummarizeInput() {
   const reduceMotion = useReducedMotion();
+  const router = useRouter();
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [showPlaceholder, setShowPlaceholder] = useState(true);
   const [isActive, setIsActive] = useState(false);
@@ -145,12 +147,7 @@ export function SummarizeInput() {
         text: `That text is ${judged.characters.toLocaleString()} characters. TLDWatch summarizes up to ${judged.limit.toLocaleString()}; try a shorter part.`,
       });
     }
-    if (judged.kind === "text") {
-      return setNotice({
-        kind: "info",
-        text: "Summaries of long texts are coming soon. For now, TLDWatch summarizes YouTube links and video files.",
-      });
-    }
+    if (judged.kind === "text") return summarizeText(input);
     const text = input.trim();
     const parsed = parseVideoUrl(text);
     if (!parsed.ok) {
@@ -174,6 +171,25 @@ export function SummarizeInput() {
               ("memberLimitMinutes" in result && !!result.memberLimitMinutes),
           },
     );
+  };
+
+  /** A long text is summarized privately, then opens on its own page, like an Upload. */
+  const summarizeText = async (text: string) => {
+    const request = ++latestRequest.current;
+    setNotice({ kind: "summarizing", videoId: "", source: "text" });
+    const result = await fetchTextSummary(text);
+    if (result.summariesLeft) setSummariesLeft(result.summariesLeft);
+    if (request !== latestRequest.current) return;
+    if (result.status === "ready") {
+      const lang = language === "original" ? "?lang=original" : "";
+      router.push(`/u/${result.summary.videoId}${lang}`);
+      return;
+    }
+    setNotice({
+      kind: "error",
+      text: rejectionText(result),
+      offerMembership: "memberDailyLimit" in result && !!result.memberDailyLimit,
+    });
   };
 
   // A link shared from the phone's Share menu arrives as ?link=. In the installed
@@ -414,7 +430,7 @@ export function SummarizeInput() {
               transition={{ duration: 0.2 }}
             >
               {notice.kind === "summarizing" ? (
-                <Summarizing videoId={notice.videoId} />
+                <Summarizing videoId={notice.videoId} source={notice.source} />
               ) : notice.kind === "summary" ? (
                 <SummaryCard
                   initial={notice.summary}

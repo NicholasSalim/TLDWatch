@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Film, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { HistoryItem } from "@/core/core";
+import type { SummarySource } from "@/core/summary";
+import { SOURCE_ICONS } from "@/components/summary-view";
 import { summaryPath } from "@/core/share";
 import { isUploadId } from "@/core/upload-id";
 import { openSignIn, useMe } from "@/lib/me";
@@ -133,12 +135,7 @@ export function HistoryList() {
           >
             {isUploadId(item.videoId) ? (
               // An Upload has no thumbnail online.
-              <div
-                aria-hidden
-                className="grid aspect-video w-24 shrink-0 place-items-center rounded-lg bg-white/8 text-haze sm:w-28"
-              >
-                <Film className="size-5" />
-              </div>
+              <UploadIcon source={item.source} />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail
               <img
@@ -218,6 +215,19 @@ function Skeleton() {
           className="h-22 animate-pulse rounded-2xl border border-white/10 bg-white/4"
         />
       ))}
+    </div>
+  );
+}
+
+/** An Upload has no thumbnail online: an icon for its kind stands in. */
+function UploadIcon({ source = "video" }: { source?: SummarySource }) {
+  const Icon = SOURCE_ICONS[source];
+  return (
+    <div
+      aria-hidden
+      className="grid aspect-video w-24 shrink-0 place-items-center rounded-lg bg-white/8 text-haze sm:w-28"
+    >
+      <Icon className="size-5" />
     </div>
   );
 }

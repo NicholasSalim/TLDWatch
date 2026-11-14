@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Film, Link2, ThumbsDown, ThumbsUp, X, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  FileAudio,
+  FileImage,
+  FileText,
+  FileType,
+  Film,
+  Link2,
+  ThumbsDown,
+  ThumbsUp,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import {
   isEnglish,
   LENGTH_LABELS,
@@ -11,6 +23,7 @@ import {
   type LengthContent,
   type Summary,
   type SummaryLanguage,
+  type SummarySource,
 } from "@/core/summary";
 import { sharePath } from "@/core/share";
 import { isUploadId } from "@/core/upload-id";
@@ -19,15 +32,26 @@ import { formatTimestamp, timestampUrl } from "@/core/timestamps";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
 
-function Thumbnail({ videoId }: { videoId: string }) {
-  // An Upload has no thumbnail online: a quiet placeholder instead.
-  if (isUploadId(videoId)) {
+/** The icon standing in for a thumbnail, for each kind of Upload. */
+export const SOURCE_ICONS: Record<SummarySource, LucideIcon> = {
+  video: Film,
+  audio: FileAudio,
+  pdf: FileType,
+  image: FileImage,
+  text: FileText,
+};
+
+function Thumbnail({ videoId, source = "video" }: { videoId: string; source?: SummarySource }) {
+  // An Upload (or a text still being summarized, with no id yet) has no
+  // thumbnail online: a quiet placeholder for its kind instead.
+  if (!videoId || isUploadId(videoId)) {
+    const Icon = SOURCE_ICONS[source];
     return (
       <div
         aria-hidden
         className="grid aspect-video w-28 shrink-0 place-items-center rounded-lg bg-white/8 text-haze"
       >
-        <Film className="size-6" />
+        <Icon className="size-6" />
       </div>
     );
   }
@@ -53,7 +77,14 @@ const STAGES = [
   { after: 45, text: "Longer videos take a little more time. Nearly there…" },
 ];
 
-export function Summarizing({ videoId }: { videoId: string }) {
+const TEXT_STAGES = [
+  { after: 0, text: "Reading the text…" },
+  { after: 6, text: "Picking out the key points…" },
+  { after: 15, text: "Deciding whether it's worth reading in full…" },
+  { after: 30, text: "Longer texts take a little more time. Nearly there…" },
+];
+
+export function Summarizing({ videoId, source = "video" }: { videoId: string; source?: SummarySource }) {
   const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
@@ -62,17 +93,21 @@ export function Summarizing({ videoId }: { videoId: string }) {
     return () => clearInterval(timer);
   }, []);
 
-  const stage = STAGES.findLast((s) => seconds >= s.after) ?? STAGES[0];
+  const stages = source === "text" ? TEXT_STAGES : STAGES;
+  const stage = stages.findLast((s) => seconds >= s.after) ?? stages[0];
+  const what = source === "text" ? "text" : "video";
 
   return (
     <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-white/4 p-3">
-      <Thumbnail videoId={videoId} />
+      <Thumbnail videoId={videoId} source={source} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-mist">Video found. Summarizing it now.</p>
+        <p className="text-sm font-medium text-mist">
+          {source === "text" ? "Summarizing your text now." : "Video found. Summarizing it now."}
+        </p>
         <p className="mt-1 text-pretty text-sm leading-relaxed text-haze">{stage.text}</p>
         <div
           role="progressbar"
-          aria-label="Summarizing the video"
+          aria-label={`Summarizing the ${what}`}
           aria-valuetext={stage.text}
           className="mt-3 h-1 overflow-hidden rounded-full bg-white/8"
         >
@@ -138,7 +173,7 @@ export function SummaryView({
     >
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <div className="flex items-center gap-4">
-          <Thumbnail videoId={summary.videoId} />
+          <Thumbnail videoId={summary.videoId} source={summary.source} />
           <div className="flex flex-col items-start gap-1">
             <h2 className="font-heading text-lg font-semibold tracking-tight text-mist">Summary</h2>
             {/* An Upload Summary is private: no share link to leak it. */}
@@ -210,7 +245,12 @@ export function SummaryView({
 
       {narration}
 
-      <Verdict verdict={content.verdict} />
+      <Verdict
+        verdict={content.verdict}
+        source={summary.source ?? "video"}
+        // Only YouTube videos have a title to live up to.
+        titled={!isUploadId(summary.videoId)}
+      />
 
       <p className="mt-5 text-pretty text-base leading-relaxed text-mist">{content.overview}</p>
 
@@ -308,7 +348,24 @@ function CopyLinkButton({ videoId, language }: { videoId: string; language: Summ
   );
 }
 
-function Verdict({ verdict }: { verdict: LengthContent["verdict"] }) {
+/** How the full thing is taken in, for "Worth … in full". */
+const IN_FULL: Record<SummarySource, string> = {
+  video: "Worth watching in full",
+  audio: "Worth listening to in full",
+  pdf: "Worth reading in full",
+  image: "Worth a closer look",
+  text: "Worth reading in full",
+};
+
+function Verdict({
+  verdict,
+  source,
+  titled,
+}: {
+  verdict: LengthContent["verdict"];
+  source: SummarySource;
+  titled: boolean;
+}) {
   return (
     <section
       aria-label="Verdict"
@@ -318,13 +375,15 @@ function Verdict({ verdict }: { verdict: LengthContent["verdict"] }) {
         <VerdictBadge
           good={verdict.worthWatching}
           icon={verdict.worthWatching ? ThumbsUp : ThumbsDown}
-          text={verdict.worthWatching ? "Worth watching in full" : "The Summary is enough"}
+          text={verdict.worthWatching ? IN_FULL[source] : "The Summary is enough"}
         />
-        <VerdictBadge
-          good={verdict.deliversOnTitle}
-          icon={verdict.deliversOnTitle ? Check : X}
-          text={verdict.deliversOnTitle ? "Delivers on its title" : "Doesn't deliver on its title"}
-        />
+        {titled && (
+          <VerdictBadge
+            good={verdict.deliversOnTitle}
+            icon={verdict.deliversOnTitle ? Check : X}
+            text={verdict.deliversOnTitle ? "Delivers on its title" : "Doesn't deliver on its title"}
+          />
+        )}
       </div>
       <p className="mt-3 text-pretty text-sm leading-relaxed text-mist/90">{verdict.explanation}</p>
     </section>
