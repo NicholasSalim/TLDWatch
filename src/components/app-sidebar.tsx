@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import {
   History,
   Home,
-  Lock,
   LogIn,
   LogOut,
   Menu,
@@ -188,24 +187,17 @@ function NavItems({
           onNavigate={onNavigate}
         />
       ) : (
-        // History is for Members: shown, greyed, and an invitation to sign in.
+        // History is for Members: for a Guest it looks the same, and opens sign-in.
         <button
           type="button"
           onClick={openSignIn}
-          title={collapsed ? "History · Members only" : undefined}
-          className={cn(ITEM, "text-haze/60 hover:bg-white/5 hover:text-haze", collapsed && "justify-center px-0")}
+          title={collapsed ? "History" : undefined}
+          className={cn(ITEM, "text-haze hover:bg-white/6 hover:text-mist", collapsed && "justify-center px-0")}
         >
           <History className="size-5 shrink-0" aria-hidden />
-          {!collapsed && (
-            <>
-              <span>History</span>
-              <span className="ml-auto flex items-center gap-1 text-xs">
-                <Lock className="size-3.5" aria-hidden />
-                Members only
-              </span>
-            </>
-          )}
-          {collapsed && <span className="sr-only">History, Members only</span>}
+          <span className={cn(collapsed && "sr-only")}>History</span>
+          {/* Said aloud, so it's clear why it opens sign-in. */}
+          <span className="sr-only">, for Members: sign in to see it</span>
         </button>
       )}
 

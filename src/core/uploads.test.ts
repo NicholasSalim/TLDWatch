@@ -62,11 +62,6 @@ describe("starting an Upload", () => {
     });
   });
 
-  it("asks a Guest to sign in", async () => {
-    const { core } = setup();
-    expect(await core.startUpload(guest, clip)).toEqual({ status: "rejected", reason: "upload-members-only" });
-  });
-
   it.each([
     ["over 30 minutes", { durationSeconds: 30 * 60 + 1 }, { reason: "video-too-long", limitMinutes: 30 }],
     ["over the file-size limit", { sizeBytes: 50 * 1024 * 1024 + 1 }, { reason: "upload-too-large", limitMb: 50 }],

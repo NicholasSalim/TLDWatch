@@ -18,7 +18,7 @@ import type {
   UsageCounters,
   VideoCatalog,
 } from "./ports";
-import type { Requester } from "./requester";
+import { ownerKey, type Requester } from "./requester";
 import {
   baseLanguage,
   engineOutputSchema,
@@ -104,7 +104,6 @@ export type SummaryRejection =
         | "summary-failed"
         | "language-members-only"
         | "language-not-offered"
-        | "upload-members-only"
         | "upload-not-found"
         | "upload-not-supported";
     }
@@ -185,10 +184,10 @@ export type HistoryItem = {
 
 export type UploadStart =
   | { status: "ready"; uploadId: string; uploadUrl: string }
-  | { status: "rejected"; reason: "upload-members-only" | "upload-not-a-video" }
+  | { status: "rejected"; reason: "upload-not-a-video" }
   | { status: "rejected"; reason: "upload-too-large"; limitMb: number }
-  | { status: "rejected"; reason: "video-too-long"; limitMinutes: number }
-  | { status: "rejected"; reason: "daily-limit-reached"; resetsAt: string };
+  | { status: "rejected"; reason: "video-too-long"; limitMinutes: number; memberLimitMinutes?: number }
+  | { status: "rejected"; reason: "daily-limit-reached"; resetsAt: string; memberDailyLimit?: number };
 
 /** Formats an Upload may start with: those `checkFile` finds for a kind TLDWatch summarizes. */
 const UPLOAD_TYPES = new Set(UPLOAD_MIME_TYPES);
@@ -196,10 +195,13 @@ const UPLOAD_TYPES = new Set(UPLOAD_MIME_TYPES);
 /** How long an uploaded file may wait to be summarized before it's swept away. */
 const ABANDONED_UPLOAD_MS = 60 * 60 * 1000;
 
-/** Where a Member's Upload waits: their own folder, so nobody else can name it. */
-function uploadPath(memberId: string, uploadId: string): string {
-  return `${memberId}/${uploadId}`;
+/** Where an Upload waits: its owner's own folder, so nobody else can name it. */
+function uploadPath(owner: string, uploadId: string): string {
+  return `${owner}/${uploadId}`;
 }
+
+/** How long a Guest's Upload Summary is kept: no account can delete it, so it goes by itself. */
+const GUEST_UPLOAD_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type JoinResult =
   | { status: "member"; member: Member }
@@ -754,72 +756,84 @@ export function createCore({
     return { charactersLeft: Math.max(0, naturalVoiceMonthlyCharacters - used), resetsAt: nextUtcMonth(now) };
   }
 
+  /** A Guest is told how much more a Member could do; a Member, nothing extra. */
+  function memberHint(requester: Requester) {
+    return requester.kind === "guest"
+      ? { memberLimitMinutes: DURATION_LIMIT_MINUTES.member, memberDailyLimit: limits.memberDailySummaries }
+      : {};
+  }
+
   /**
-   * Starts an Upload for a Member: checks the file before anything is sent,
-   * then gives a one-time URL in their own private folder to upload it to.
+   * Starts an Upload for a Member or a Guest: checks the file before anything
+   * is sent, then gives a one-time URL in their own private folder to upload it to.
    */
   async function startUpload(
     requester: Requester,
     file: { sizeBytes: number; durationSeconds: number; mimeType: string },
   ): Promise<UploadStart> {
-    if (requester.kind !== "member") return { status: "rejected", reason: "upload-members-only" };
     if (!UPLOAD_TYPES.has(file.mimeType.toLowerCase())) {
       return { status: "rejected", reason: "upload-not-a-video" };
     }
     if (file.sizeBytes > uploadMaxMb * 1024 * 1024) {
       return { status: "rejected", reason: "upload-too-large", limitMb: uploadMaxMb };
     }
-    const limitMinutes = DURATION_LIMIT_MINUTES.member;
+    const hint = memberHint(requester);
+    const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
     if (file.durationSeconds > limitMinutes * 60) {
-      return { status: "rejected", reason: "video-too-long", limitMinutes };
+      return {
+        status: "rejected",
+        reason: "video-too-long",
+        limitMinutes,
+        ...(hint.memberLimitMinutes && { memberLimitMinutes: hint.memberLimitMinutes }),
+      };
     }
     // Say so now, not after they've waited for a 50 MB upload.
     const left = await summariesLeftToday(requester);
     if (left.left === 0) {
-      return { status: "rejected", reason: "daily-limit-reached", resetsAt: left.resetsAt };
+      return {
+        status: "rejected",
+        reason: "daily-limit-reached",
+        resetsAt: left.resetsAt,
+        ...(hint.memberDailyLimit && { memberDailyLimit: hint.memberDailyLimit }),
+      };
     }
     const uploadId = `upload-${newId()}`;
-    const uploadUrl = await uploads.createUploadUrl(uploadPath(requester.memberId, uploadId));
+    const uploadUrl = await uploads.createUploadUrl(uploadPath(ownerKey(requester), uploadId));
     return { status: "ready", uploadId, uploadUrl };
   }
 
   /**
-   * Summarizes a Member's uploaded file privately, then deletes it, whether
-   * that worked or not. It counts toward their daily Summaries only if it worked.
+   * Summarizes an uploaded file privately for its owner, then deletes it,
+   * whether that worked or not. It counts toward their daily Summaries only if it worked.
    */
   // Uploads being summarized in this process, so a repeated request joins the first.
   const summarizingUploads = new Map<string, Promise<SummaryResult>>();
 
   function summarizeUpload(requester: Requester, uploadId: string): Promise<SummaryResult> {
-    if (requester.kind !== "member") {
-      return Promise.resolve({ status: "rejected", reason: "upload-members-only" });
-    }
     if (!isUploadId(uploadId)) return Promise.resolve({ status: "rejected", reason: "upload-not-found" });
-    const path = uploadPath(requester.memberId, uploadId);
+    const path = uploadPath(ownerKey(requester), uploadId);
     let pending = summarizingUploads.get(path);
     if (!pending) {
-      pending = summarizeUploadOnce(requester.memberId, uploadId, path).finally(() =>
-        summarizingUploads.delete(path),
-      );
+      pending = summarizeUploadOnce(requester, uploadId, path).finally(() => summarizingUploads.delete(path));
       summarizingUploads.set(path, pending);
     }
     return pending;
   }
 
   async function summarizeUploadOnce(
-    memberId: string,
+    requester: Requester,
     uploadId: string,
     path: string,
   ): Promise<SummaryResult> {
-    const member: Requester = { kind: "member", memberId };
+    const owner = ownerKey(requester);
     const now = clock.now();
     const day = utcDay(now);
-    const counters = summaryCounters(member);
+    const counters = summaryCounters(requester);
     let reserved = false;
     try {
       // Already summarized (the same URL used again): give that back, uncounted.
       const existing = await store.findSummary(uploadId, SUMMARY_LANGUAGE);
-      if (existing?.ownerId === memberId) return { status: "ready", summary: existing };
+      if (existing?.ownerId === owner) return { status: "ready", summary: existing };
 
       const stored = await uploads.read(path);
       if (!stored) return { status: "rejected", reason: "upload-not-found" };
@@ -830,17 +844,28 @@ export function createCore({
       }
       const file = { bytes: stored.bytes, mimeType: check.mimeType };
 
+      const hint = memberHint(requester);
       if (!(await reserveAll(counters, day, uploadId))) {
-        return { status: "rejected", reason: "daily-limit-reached", resetsAt: nextUtcMidnight(now) };
+        return {
+          status: "rejected",
+          reason: "daily-limit-reached",
+          resetsAt: nextUtcMidnight(now),
+          ...(hint.memberDailyLimit && { memberDailyLimit: hint.memberDailyLimit }),
+        };
       }
       reserved = true;
 
-      const limitMinutes = DURATION_LIMIT_MINUTES.member;
+      const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
       const read = await withDeadline(engine.summarizeVideoFile(file, limitMinutes * 60), UPLOAD_TIMEOUT_MS);
       if (read.kind === "too-long") {
         await giveBackAll(counters, day, uploadId);
         reserved = false;
-        return { status: "rejected", reason: "video-too-long", limitMinutes };
+        return {
+          status: "rejected",
+          reason: "video-too-long",
+          limitMinutes,
+          ...(hint.memberLimitMinutes && { memberLimitMinutes: hint.memberLimitMinutes }),
+        };
       }
       const output = engineOutputSchema.parse(read.output);
       const summary = await store.saveSummary({
@@ -849,11 +874,14 @@ export function createCore({
         spokenLanguage: output.spokenLanguage,
         lengths: output.lengths,
         createdAt: clock.now().toISOString(),
-        ownerId: memberId,
+        ownerId: owner,
       });
-      await remember(memberId, uploadId, summary.language).catch((error) =>
-        onFailure?.(error, { videoId: uploadId }),
-      );
+      // Only Members have a History.
+      if (requester.kind === "member") {
+        await remember(requester.memberId, uploadId, summary.language).catch((error) =>
+          onFailure?.(error, { videoId: uploadId }),
+        );
+      }
       return { status: "ready", summary };
     } catch (error) {
       onFailure?.(error, { videoId: uploadId });
@@ -883,6 +911,15 @@ export function createCore({
   }
 
   /**
+   * Deletes Guests' Upload Summaries (every language) 30 days after they were
+   * made: no account can delete them, so they go by themselves. Returns how many.
+   */
+  async function sweepOldGuestUploads(): Promise<number> {
+    const cutoff = new Date(clock.now().getTime() - GUEST_UPLOAD_KEEP_MS).toISOString();
+    return store.deleteGuestOwnedBefore(cutoff);
+  }
+
+  /**
    * An Upload Summary, for its owner only, in English, the original language,
    * or another offered language (translated once, and just as private).
    */
@@ -891,14 +928,14 @@ export function createCore({
     uploadId: string,
     requested: string = "english",
   ): Promise<{ summary: Summary; translationFailed: boolean } | null> {
-    if (requester.kind !== "member" || !isUploadId(uploadId)) return null;
+    if (!isUploadId(uploadId)) return null;
     const english = await store.findSummary(uploadId, SUMMARY_LANGUAGE);
-    if (!english || english.ownerId !== requester.memberId) return null;
+    if (!english || english.ownerId !== ownerKey(requester)) return null;
     const language = normalizeLanguage(requested);
     if (language === "english") return { summary: english, translationFailed: false };
-    if (language !== "original" && !summaryLanguages.includes(language)) {
-      return { summary: english, translationFailed: true };
-    }
+    // Other languages are for Members, on Uploads as on YouTube Summaries.
+    const offered = language === "original" || (requester.kind === "member" && summaryLanguages.includes(language));
+    if (!offered) return { summary: english, translationFailed: true };
     const translated = await translateOnce(english, language);
     return translated
       ? { summary: translated, translationFailed: false }
@@ -931,6 +968,7 @@ export function createCore({
     summarizeUpload,
     readUploadSummary,
     sweepAbandonedUploads,
+    sweepOldGuestUploads,
     sweepOldUsage,
     requestSummary,
     requestNarration,
