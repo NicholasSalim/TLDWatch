@@ -160,3 +160,10 @@
     transform: translateX(300%);
   }
 }
+
+/* The phone navigation drawer slides in from the left. */
+@keyframes drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}

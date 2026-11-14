@@ -1,8 +1,11 @@
+import { connection } from "next/server";
 import { getCore } from "@/server/core";
 import { requesterFrom } from "@/server/auth";
 
 /** How many new Summaries the Guest or Member may still make today. */
 export async function GET(request: Request) {
+  // Per visitor (it reads their cookie): never prerendered at build time.
+  await connection();
   try {
     const requester = await requesterFrom(request);
     return Response.json(await getCore().summariesLeftToday(requester), {
