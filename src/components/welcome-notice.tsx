@@ -37,7 +37,7 @@ export function WelcomeNotice() {
       className="fixed inset-x-3 bottom-3 z-30 mx-auto max-w-xl rounded-2xl border border-white/10 bg-[#151a3c]/95 p-4 text-sm text-mist shadow-[0_16px_48px_-16px_rgb(0_0_0/0.8)] backdrop-blur sm:inset-x-6 sm:bottom-6"
     >
       <p className="text-pretty leading-relaxed">
-        TLDWatch is for people <strong>18 and over</strong>. Videos you summarize are processed by
+        TLDWatch is for people <strong>18 and over</strong>. Whatever you summarize is processed by
         third-party AI services and may be reviewed by people there. See the{" "}
         <Link href="/terms" className="text-lumen underline underline-offset-2">
           Terms

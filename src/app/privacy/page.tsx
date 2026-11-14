@@ -4,11 +4,11 @@ export const metadata = { title: "Privacy · TLDWatch" };
 
 export default function PrivacyPage() {
   return (
-    <LegalPage title="Privacy" updated="13 November 2026">
+    <LegalPage title="Privacy" updated="14 November 2026">
       <p>
-        TLDWatch turns YouTube videos, and videos Members upload, into Summaries you can read or
-        listen to. This page says what TLDWatch processes, who else handles it, and how long it&apos;s
-        kept.
+        TLDWatch turns YouTube videos, and the files and texts you give it, into Summaries you can
+        read or listen to. This page says what TLDWatch processes, who else handles it, and how long
+        it&apos;s kept.
       </p>
 
       <h2>Summaries of YouTube videos</h2>
@@ -35,18 +35,34 @@ export default function PrivacyPage() {
         </li>
       </ul>
 
-      <h2>Uploads (Members)</h2>
+      <h2>Uploads: your files and texts</h2>
       <ul>
         <li>
-          An uploaded video is stored privately only while it&apos;s summarized, then deleted from our
-          storage and from the AI service, whether summarizing worked or not. A file that&apos;s never
-          summarized is deleted within about a day.
+          You can upload a video, an audio file, a PDF or an image, or paste a long text (a text file
+          is read in your browser and sent the same way). Members and Guests alike can do this.
         </li>
         <li>
-          The video is processed by a third-party AI service and may be reviewed by people there, so
-          don&apos;t upload anything private or personal.
+          It&apos;s processed by a third-party AI service to write its Summary, and may be reviewed by
+          people there, so don&apos;t upload or paste anything private or personal.
         </li>
-        <li>An Upload&apos;s Summary is visible only to you, and is deleted with your account.</li>
+        <li>
+          An uploaded file is stored privately only while it&apos;s summarized, then deleted from our
+          storage and from the AI service, whether summarizing worked or not. A file that&apos;s never
+          summarized is deleted within about a day. A pasted text isn&apos;t stored at all; only its
+          Summary is.
+        </li>
+        <li>
+          An Upload&apos;s Summary (and any translation of it) is private: only whoever made it can
+          open it, and it&apos;s never shared.
+        </li>
+        <li>
+          A Member&apos;s Upload Summaries appear in their History and are deleted with their account.
+        </li>
+        <li>
+          A Guest&apos;s Upload Summaries are tied to the anonymous cookie in their browser, and are
+          deleted automatically 30 days after they&apos;re made. Clearing your browser&apos;s cookies
+          means you can no longer open them, but they&apos;re still deleted on schedule.
+        </li>
       </ul>
 
       <h2>Guests</h2>
@@ -56,6 +72,10 @@ export default function PrivacyPage() {
           year) and keeps a keyed hash of your IP address, never the address itself. They&apos;re
           used only to count new Summaries per day, and those counts are deleted after about two
           months.
+        </li>
+        <li>
+          The cookie also marks your Upload Summaries as yours, so only your browser can open them
+          (see Uploads).
         </li>
       </ul>
 
@@ -70,9 +90,9 @@ export default function PrivacyPage() {
           counts of your new Summaries per day.
         </li>
         <li>
-          You can remove History entries at any time, and delete your account from the menu under
-          your name. Deleting it removes your profile, settings, History, Uploads and their
-          Summaries, daily counts, and your sign-in.
+          You can remove History entries at any time, and delete your account in Settings.
+          Deleting it removes your profile, settings, History, Uploads and their Summaries, daily
+          counts, and your sign-in.
         </li>
         <li>
           You can also remove TLDWatch&apos;s access to your Google account at any time in your{" "}
@@ -92,14 +112,17 @@ export default function PrivacyPage() {
             ElevenLabs
           </a>{" "}
           to be spoken. The audio of a YouTube Summary is stored and shared like the Summary itself.
-          Uploads never use it.
+          Upload Summaries never use it; they&apos;re only read in the Standard voice.
         </li>
       </ul>
 
       <h2>Services that host and run TLDWatch</h2>
       <ul>
         <li>Vercel hosts the site. It sees your IP address and country, which TLDWatch uses to block regions it can&apos;t serve and to keep out bots.</li>
-        <li>Supabase stores the database (Summaries, Members, History) and files.</li>
+        <li>
+          Supabase stores the database (Summaries, Members, History) and uploaded files while
+          they&apos;re summarized.
+        </li>
         <li>Google provides sign-in for Members.</li>
       </ul>
 

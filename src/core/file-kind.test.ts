@@ -69,6 +69,8 @@ describe("refusing what isn't safe or can't be read", () => {
     ["a RAR archive", "files.rar", bytes("Rar!", [0x1a, 7])],
     ["a GIF (the engine can't read it)", "funny.gif", bytes("GIF89a")],
     ["a Matroska video (not WebM)", "film.mkv", bytes([0x1a, 0x45, 0xdf, 0xa3, 0xa3, 0x42, 0x82, 0x88], "matroska")],
+    ["an AVIF image (an ISO media brand the engine can't read)", "photo", ftyp("avif")],
+    ["a JPEG 2000 image (another unknown ISO media brand)", "scan", ftyp("jp2 ")],
     ["binary posing as text", "notes.txt", bytes("abc", [0, 0, 0, 1], "def")],
     ["text with an unknown extension", "notes.log", bytes("plain words")],
     ["an empty file", "clip.mp4", bytes()],

@@ -5,7 +5,7 @@ export const metadata = { title: "Terms · TLDWatch" };
 
 export default function TermsPage() {
   return (
-    <LegalPage title="Terms" updated="13 November 2026">
+    <LegalPage title="Terms" updated="14 November 2026">
       <p>
         By using TLDWatch you agree to these terms. If you don&apos;t, please don&apos;t use it.
       </p>
@@ -22,12 +22,13 @@ export default function TermsPage() {
       <h2>What TLDWatch does</h2>
       <ul>
         <li>
-          It summarizes public YouTube videos, and videos Members upload, using third-party AI
-          services. Their inputs may be reviewed by people at those services.
+          It summarizes public YouTube videos, and the videos, audio files, PDFs, images and texts
+          you upload or paste, using third-party AI services. Their inputs may be reviewed by people
+          at those services.
         </li>
         <li>
           Summaries, Verdicts and translations are made by AI. They can be wrong or incomplete, and
-          they aren&apos;t professional advice of any kind. Watch the video when it matters.
+          they aren&apos;t professional advice of any kind. Go to the original when it matters.
         </li>
         <li>
           Daily limits apply, and TLDWatch may refuse new Summaries when it has reached its daily
@@ -46,8 +47,14 @@ export default function TermsPage() {
 
       <h2>Your uploads</h2>
       <ul>
-        <li>Only upload videos you have the right to share with a third-party AI service.</li>
-        <li>Don&apos;t upload anything private, personal or illegal.</li>
+        <li>
+          Only upload or paste content you have the right to share with a third-party AI service.
+        </li>
+        <li>Don&apos;t upload or paste anything private, personal or illegal.</li>
+        <li>
+          A Guest&apos;s Upload Summaries live only in their browser and are deleted after 30 days;
+          keep a copy of anything you need.
+        </li>
       </ul>
 
       <h2>Fair use</h2>

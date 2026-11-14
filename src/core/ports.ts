@@ -39,10 +39,11 @@ export type UploadKind = "video" | "audio" | "pdf" | "image";
 
 /**
  * Private storage for Uploads while they're summarized. A path is
- * "<memberId>/<uploadId>", so a Member can only ever reach their own.
+ * "<owner>/<uploadId>" (a Member's id, or "guest-<cookie id>"), so each
+ * owner can only ever reach their own.
  */
 export interface UploadStorage {
-  /** A short-lived URL the Member's browser uploads the file to, directly. */
+  /** A short-lived URL the owner's browser uploads the file to, directly. */
   createUploadUrl(path: string): Promise<string>;
   /** The uploaded file, or null if there's none at that path. */
   read(path: string): Promise<UploadedFile | null>;
@@ -62,7 +63,7 @@ export interface SummaryStore {
    * keeps the existing one and returns it.
    */
   saveSummary(summary: Summary): Promise<Summary>;
-  /** Deletes every Summary a Member owns (their Uploads, in every language). */
+  /** Deletes every Summary an owner (see ownerKey) has: their Uploads, in every language. */
   deleteOwnedBy(ownerId: string): Promise<void>;
   /**
    * Deletes every Upload owned by a Guest (an owner starting "guest-") whose

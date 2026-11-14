@@ -169,7 +169,8 @@ function sniff(head: Uint8Array): { kind: FileKind; mimeType: string } | null {
     if (["M4A ", "M4B "].includes(brand)) return { kind: "audio", mimeType: "audio/m4a" };
     if (brand === "qt  ") return { kind: "video", mimeType: "video/mov" };
     if (brand.startsWith("3g")) return { kind: "video", mimeType: "video/3gpp" };
-    return { kind: "video", mimeType: "video/mp4" };
+    // Only brands known to be MP4 video; others (AVIF, JPEG 2000...) aren't let through as one.
+    return MP4_BRANDS.has(brand) ? { kind: "video", mimeType: "video/mp4" } : null;
   }
 
   // EBML: WebM is allowed, other Matroska files aren't.
@@ -193,6 +194,38 @@ function sniff(head: Uint8Array): { kind: FileKind; mimeType: string } | null {
   if (at(0, "OggS")) return { kind: "audio", mimeType: "audio/ogg" };
   if (at(0, "fLaC")) return { kind: "audio", mimeType: "audio/flac" };
 
+  return null;
+}
+
+/** ISO media brands that mean an MP4 video, as phones, cameras and editors write them. */
+const MP4_BRANDS = new Set([
+  "isom",
+  "iso2",
+  "iso3",
+  "iso4",
+  "iso5",
+  "iso6",
+  "mp41",
+  "mp42",
+  "avc1",
+  "dash",
+  "mmp4",
+  "M4V ",
+  "M4VH",
+  "M4VP",
+  "MSNV",
+  "XAVC",
+  "f4v ",
+]);
+
+/** The kind a declared type (such as "image/png") promises, or null if it promises none. */
+export function kindOfMimeType(mimeType: string): FileKind | null {
+  const type = mimeType.toLowerCase();
+  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
+  if (type.startsWith("image/")) return "image";
+  if (type === "application/pdf") return "pdf";
+  if (type === "text/plain") return "text";
   return null;
 }
 
