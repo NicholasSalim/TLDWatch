@@ -34,6 +34,7 @@ import {
   type SummaryLanguage,
 } from "./summary";
 import { isUploadId } from "./upload-id";
+import { checkFile, FILE_HEAD_BYTES, UPLOAD_MIME_TYPES, UPLOADABLE_KINDS } from "./file-kind";
 import { isVideoId, parseVideoUrl, type VideoUrlRejection } from "./video-url";
 
 export type UsageLimits = {
@@ -104,7 +105,8 @@ export type SummaryRejection =
         | "language-members-only"
         | "language-not-offered"
         | "upload-members-only"
-        | "upload-not-found";
+        | "upload-not-found"
+        | "upload-not-supported";
     }
   | {
       status: "rejected";
@@ -188,20 +190,8 @@ export type UploadStart =
   | { status: "rejected"; reason: "video-too-long"; limitMinutes: number }
   | { status: "rejected"; reason: "daily-limit-reached"; resetsAt: string };
 
-/** Video formats the engine can read, as browsers name them. */
-const UPLOAD_VIDEO_TYPES = new Set([
-  "video/mp4",
-  "video/mpeg",
-  "video/quicktime",
-  "video/mov",
-  "video/webm",
-  "video/x-msvideo",
-  "video/avi",
-  "video/x-flv",
-  "video/x-ms-wmv",
-  "video/wmv",
-  "video/3gpp",
-]);
+/** Formats an Upload may start with: those `checkFile` finds for a kind TLDWatch summarizes. */
+const UPLOAD_TYPES = new Set(UPLOAD_MIME_TYPES);
 
 /** How long an uploaded file may wait to be summarized before it's swept away. */
 const ABANDONED_UPLOAD_MS = 60 * 60 * 1000;
@@ -773,7 +763,7 @@ export function createCore({
     file: { sizeBytes: number; durationSeconds: number; mimeType: string },
   ): Promise<UploadStart> {
     if (requester.kind !== "member") return { status: "rejected", reason: "upload-members-only" };
-    if (!UPLOAD_VIDEO_TYPES.has(file.mimeType.toLowerCase())) {
+    if (!UPLOAD_TYPES.has(file.mimeType.toLowerCase())) {
       return { status: "rejected", reason: "upload-not-a-video" };
     }
     if (file.sizeBytes > uploadMaxMb * 1024 * 1024) {
@@ -831,8 +821,14 @@ export function createCore({
       const existing = await store.findSummary(uploadId, SUMMARY_LANGUAGE);
       if (existing?.ownerId === memberId) return { status: "ready", summary: existing };
 
-      const file = await uploads.read(path);
-      if (!file) return { status: "rejected", reason: "upload-not-found" };
+      const stored = await uploads.read(path);
+      if (!stored) return { status: "rejected", reason: "upload-not-found" };
+      // The browser checked it, but the server never takes its word: judge the bytes again.
+      const check = checkFile({ name: "", head: stored.bytes.subarray(0, FILE_HEAD_BYTES) });
+      if (!check.ok || !UPLOADABLE_KINDS.has(check.kind)) {
+        return { status: "rejected", reason: "upload-not-supported" };
+      }
+      const file = { bytes: stored.bytes, mimeType: check.mimeType };
 
       if (!(await reserveAll(counters, day, uploadId))) {
         return { status: "rejected", reason: "daily-limit-reached", resetsAt: nextUtcMidnight(now) };

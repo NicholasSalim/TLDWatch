@@ -95,7 +95,42 @@ describe("checks before the upload", () => {
       status: "rejected",
       reason: "upload-not-a-video",
     });
-    expect((await core.startUpload(member, { ...clip, mimeType: "video/quicktime" })).status).toBe("ready");
+    expect((await core.startUpload(member, { ...clip, mimeType: "video/mov" })).status).toBe("ready");
+  });
+});
+
+describe("checking the uploaded file itself", () => {
+  const pdf = { bytes: new TextEncoder().encode("%PDF-1.7\n..."), mimeType: "video/mp4" };
+  const program = { bytes: new Uint8Array([0x4d, 0x5a, 0x90, 0]), mimeType: "video/mp4" };
+
+  it.each([
+    ["a PDF the browser called a video", pdf],
+    ["a program the browser called a video", program],
+  ])("refuses %s, deleting it and counting nothing", async (_, file) => {
+    const { core, engine, uploads } = setup();
+    const started = await core.startUpload(member, clip);
+    if (started.status !== "ready") throw new Error("couldn't start");
+    uploads.put(`m-1/${started.uploadId}`, file);
+
+    expect(await core.summarizeUpload(member, started.uploadId)).toEqual({
+      status: "rejected",
+      reason: "upload-not-supported",
+    });
+    expect(engine.fileCalls).toHaveLength(0);
+    expect(uploads.files.size).toBe(0);
+    expect((await core.summariesLeftToday(member)).left).toBe(10);
+  });
+
+  it("tells the engine what the file really is, not what the browser said", async () => {
+    const { core, engine, uploads } = setup();
+    const started = await core.startUpload(member, clip);
+    if (started.status !== "ready") throw new Error("couldn't start");
+    const mov = new Uint8Array([0, 0, 0, 0x14, ...new TextEncoder().encode("ftypqt  "), 0, 0, 0, 0]);
+    uploads.put(`m-1/${started.uploadId}`, { bytes: mov, mimeType: "application/octet-stream" });
+
+    await core.summarizeUpload(member, started.uploadId);
+
+    expect(engine.fileCalls[0]?.mimeType).toBe("video/mov");
   });
 });
 
