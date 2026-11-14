@@ -2,9 +2,10 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, X } from "lucide-react";
+import { FileVideo, Upload, X } from "lucide-react";
 import type { UploadStart } from "@/core/core";
 import type { SummaryResponse } from "@/lib/api-types";
+import { inspectFile, KIND_NAMES, UPLOAD_KINDS } from "@/lib/check-file";
 import { rejectionText } from "@/lib/rejection-text";
 
 type Step =
@@ -13,10 +14,18 @@ type Step =
   | { kind: "summarizing" }
   | { kind: "error"; message: string };
 
-/** Opens the Upload dialog from anywhere on the page (Members only). */
-export function openUpload() {
-  window.dispatchEvent(new Event("tldwatch:upload"));
+/** A file already checked in the browser (see inspectFile), with its real type. */
+export type CheckedFile = { file: File; mimeType: string };
+
+/**
+ * Opens the Upload dialog from anywhere on the page (Members only), with a
+ * file already chosen (dropped, pasted or picked from the input) or without.
+ */
+export function openUpload(chosen?: CheckedFile) {
+  window.dispatchEvent(new CustomEvent<CheckedFile | undefined>("tldwatch:upload", { detail: chosen }));
 }
+
+const VIDEO_ACCEPT = UPLOAD_KINDS.find((k) => k.kind === "video")!.accept;
 
 /**
  * Uploading a video file, for Members: a warning to accept, a file checked in
@@ -28,13 +37,15 @@ export function UploadDialog() {
   const router = useRouter();
   const [understood, setUnderstood] = useState(false);
   const [step, setStep] = useState<Step>({ kind: "choose" });
+  const [chosen, setChosen] = useState<CheckedFile | null>(null);
   const titleId = useId();
   const checkboxId = useId();
   const busy = step.kind === "uploading" || step.kind === "summarizing";
 
   useEffect(() => {
-    const open = () => {
+    const open = (event: Event) => {
       setStep({ kind: "choose" });
+      setChosen((event as CustomEvent<CheckedFile | undefined>).detail ?? null);
       dialog.current?.showModal();
     };
     window.addEventListener("tldwatch:upload", open);
@@ -45,18 +56,31 @@ export function UploadDialog() {
     if (!busy) dialog.current?.close();
   };
 
-  const choose = async (file: File) => {
+  /** A file picked here is checked just like one dropped on the input. */
+  const pick = async (file: File) => {
+    const inspection = await inspectFile(file);
+    if (!inspection.ok) return setStep({ kind: "error", message: inspection.message });
+    if (!inspection.uploadable) {
+      return setStep({
+        kind: "error",
+        message: `Summaries of ${KIND_NAMES[inspection.kind]}s are coming soon. For now, choose a video file.`,
+      });
+    }
+    void send({ file, mimeType: inspection.mimeType });
+  };
+
+  const send = async ({ file, mimeType }: CheckedFile) => {
     setStep({ kind: "uploading", percent: 0 });
     try {
       const durationSeconds = (await videoDuration(file)) ?? 0;
       const start = await postJson<UploadStart>("/api/uploads", {
         sizeBytes: file.size,
         durationSeconds,
-        mimeType: file.type || "video/mp4",
+        mimeType,
       });
       if (start.status !== "ready") return setStep({ kind: "error", message: startRejection(start) });
 
-      await putWithProgress(start.uploadUrl, file, (percent) => setStep({ kind: "uploading", percent }));
+      await putWithProgress(start.uploadUrl, file, mimeType, (percent) => setStep({ kind: "uploading", percent }));
       setStep({ kind: "summarizing" });
 
       const result = await postJson<SummaryResponse>(`/api/uploads/${start.uploadId}`, {});
@@ -126,7 +150,29 @@ export function UploadDialog() {
           </p>
         )}
 
-        {!busy && (
+        {chosen && !busy && (
+          <p className="mt-4 flex items-center gap-2 truncate text-sm text-mist">
+            <FileVideo className="size-4 shrink-0 text-haze" aria-hidden />
+            <span className="truncate">{chosen.file.name || "Pasted video"}</span>
+            <span className="shrink-0 text-haze">{megabytes(chosen.file.size)}</span>
+          </p>
+        )}
+
+        {chosen && !busy && (
+          <button
+            type="button"
+            disabled={!understood}
+            onClick={() => void send(chosen)}
+            className={`mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-full font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lumen ${
+              understood ? "bg-lumen text-ink hover:bg-[#f8d488]" : "cursor-not-allowed bg-white/10 text-haze"
+            }`}
+          >
+            <Upload className="size-4" aria-hidden />
+            Upload and summarize
+          </button>
+        )}
+
+        {!chosen && !busy && (
           <label
             className={`mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-full font-medium transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-lumen ${
               understood
@@ -138,13 +184,13 @@ export function UploadDialog() {
             Choose a video file
             <input
               type="file"
-              accept="video/*"
+              accept={VIDEO_ACCEPT}
               disabled={!understood}
               className="sr-only"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 e.target.value = "";
-                if (file) void choose(file);
+                if (file) void pick(file);
               }}
             />
           </label>
@@ -174,6 +220,10 @@ function Progress({ label, percent }: { label: string; percent?: number }) {
       </div>
     </div>
   );
+}
+
+function megabytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
 function startRejection(start: Exclude<UploadStart, { status: "ready" }>): string {
@@ -221,11 +271,16 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 /** Uploads the file straight to private storage, reporting progress. */
-function putWithProgress(url: string, file: File, onProgress: (percent: number) => void): Promise<void> {
+function putWithProgress(
+  url: string,
+  file: File,
+  mimeType: string,
+  onProgress: (percent: number) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url);
-    request.setRequestHeader("Content-Type", file.type || "video/mp4");
+    request.setRequestHeader("Content-Type", mimeType);
     request.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
     request.onload = () => (request.status < 300 ? resolve() : reject(new Error(`HTTP ${request.status}`)));
     request.onerror = () => reject(new Error("network"));

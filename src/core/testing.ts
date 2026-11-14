@@ -248,6 +248,9 @@ export class InMemoryNarrationAudioStore implements NarrationAudioStore {
   }
 }
 
+/** The first bytes of a real MP4 file: enough for the server to recognise it. */
+export const MP4_HEAD = new Uint8Array([0, 0, 0, 0x20, ...new TextEncoder().encode("ftypisom"), 0, 0, 2, 0]);
+
 export class InMemoryUploadStorage implements UploadStorage {
   files = new Map<string, UploadedVideo>();
   uploadedAt = new Map<string, string>();
@@ -272,7 +275,7 @@ export class InMemoryUploadStorage implements UploadStorage {
   /** What the Member's browser does with the URL. */
   put(
     path: string,
-    video: UploadedVideo = { bytes: new Uint8Array([1, 2, 3]), mimeType: "video/mp4" },
+    video: UploadedVideo = { bytes: MP4_HEAD, mimeType: "video/mp4" },
     at = "2026-11-12T10:00:00.000Z",
   ) {
     this.files.set(path, video);

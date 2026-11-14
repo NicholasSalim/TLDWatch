@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -69,7 +70,11 @@ export function AppSidebar() {
         <Wordmark />
       </div>
 
-      {drawerOpen && (
+      {/* Portaled to <body>: the layout's isolated backdrop would otherwise trap
+          it beneath page-wide overlays such as the welcome notice. It only
+          opens after a click, so document exists. */}
+      {drawerOpen &&
+        createPortal(
         <div className="fixed inset-0 z-40 md:hidden">
           <button
             type="button"
@@ -93,15 +98,16 @@ export function AppSidebar() {
               </button>
             </SidebarContent>
           </aside>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
 
       {/* Desktop: a sidebar that can collapse to icons. */}
       <aside
         aria-label="Navigation"
         className={cn(
           "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-white/8 bg-[#0b1029]/60 backdrop-blur transition-[width] duration-200 md:flex",
-          collapsed ? "w-[4.5rem]" : "w-64",
+          collapsed ? "w-18" : "w-64",
         )}
       >
         <SidebarContent collapsed={collapsed}>

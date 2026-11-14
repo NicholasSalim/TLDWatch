@@ -94,7 +94,8 @@ export function createGeminiSummaryEngine({
 
   return {
     async summarizeVideoFile(video, maxDurationSeconds) {
-      const mimeType = engineMimeType(video.mimeType);
+      // The core names the type from the file's own bytes, in the engine's terms.
+      const mimeType = video.mimeType;
       const uploaded = await files.files.upload({
         file: new Blob([video.bytes as BlobPart], { type: mimeType }),
         config: { mimeType },
@@ -128,11 +129,6 @@ export function createGeminiSummaryEngine({
       return summarize(ai, { fileData: { fileUri: `https://www.youtube.com/watch?v=${videoId}` } }, PROMPT);
     },
   };
-}
-
-/** Browsers call .mov files "video/quicktime"; the engine calls them "video/mov". */
-function engineMimeType(browserType: string): string {
-  return browserType.toLowerCase() === "video/quicktime" ? "video/mov" : browserType;
 }
 
 /** "123.4s" (how the engine reports a video's length) in seconds, or null if absent. */
