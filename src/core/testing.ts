@@ -82,6 +82,16 @@ export class FakeSummaryEngine implements SummaryEngine {
     return { kind: "read" as const, output: this.respond("upload") };
   }
 
+  /** Texts it was given to summarize. */
+  textCalls: string[] = [];
+  failText = false;
+
+  async summarizeText(text: string) {
+    this.textCalls.push(text);
+    if (this.failText) throw new Error("engine couldn't read the text");
+    return this.respond("text");
+  }
+
   /** In manual mode, lets every waiting call finish. */
   finish() {
     this.pending.splice(0).forEach((resolve) => resolve());

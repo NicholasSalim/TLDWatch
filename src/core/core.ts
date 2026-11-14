@@ -32,9 +32,16 @@ import {
   type LengthContent,
   type Summary,
   type SummaryLanguage,
+  type SummarySource,
 } from "./summary";
 import { isUploadId } from "./upload-id";
-import { checkFile, FILE_HEAD_BYTES, UPLOAD_MIME_TYPES, UPLOADABLE_KINDS } from "./file-kind";
+import {
+  checkFile,
+  FILE_HEAD_BYTES,
+  LONG_TEXT_MAX_CHARACTERS,
+  UPLOAD_MIME_TYPES,
+  UPLOADABLE_KINDS,
+} from "./file-kind";
 import { isVideoId, parseVideoUrl, type VideoUrlRejection } from "./video-url";
 
 export type UsageLimits = {
@@ -121,7 +128,8 @@ export type SummaryRejection =
       /** Set for Guests: how many a Member gets instead. */
       memberDailyLimit?: number;
     }
-  | { status: "rejected"; reason: "app-capacity-reached"; resetsAt: string };
+  | { status: "rejected"; reason: "app-capacity-reached"; resetsAt: string }
+  | { status: "rejected"; reason: "text-too-long"; limitCharacters: number };
 
 export type SummaryResult =
   | {
@@ -180,6 +188,8 @@ export type HistoryItem = {
   openedAt: string;
   /** The Short overview, to recognise the video by. */
   preview: string;
+  /** What was summarized: a video unless said otherwise. */
+  source?: SummarySource;
 };
 
 export type UploadStart =
@@ -198,6 +208,15 @@ const ABANDONED_UPLOAD_MS = 60 * 60 * 1000;
 /** Where an Upload waits: its owner's own folder, so nobody else can name it. */
 function uploadPath(owner: string, uploadId: string): string {
   return `${owner}/${uploadId}`;
+}
+
+/** The same Lengths, with no Timestamps: for sources with no timeline. */
+function withoutTimestamps(lengths: Record<Length, LengthContent>): Record<Length, LengthContent> {
+  return {
+    short: { ...lengths.short, timestamps: [] },
+    medium: { ...lengths.medium, timestamps: [] },
+    detailed: { ...lengths.detailed, timestamps: [] },
+  };
 }
 
 /** How long a Guest's Upload Summary is kept: no account can delete it, so it goes by itself. */
@@ -432,8 +451,9 @@ export function createCore({
         spokenLanguage,
         lengths: keepStructure(english.lengths, translationSchema.parse(raw)),
         createdAt: clock.now().toISOString(),
-        // A translation of an Upload Summary is just as private.
+        // A translation of an Upload Summary is just as private, and of the same source.
         ...(english.ownerId && { ownerId: english.ownerId }),
+        ...(english.source && { source: english.source }),
       });
     } catch (error) {
       onFailure?.(error, { videoId });
@@ -635,6 +655,7 @@ export function createCore({
         language: summary.language,
         openedAt: entry.openedAt,
         preview: summary.lengths.short.overview,
+        ...(summary.source && { source: summary.source }),
       });
     }
     return items;
@@ -911,6 +932,58 @@ export function createCore({
   }
 
   /**
+   * Summarizes a pasted text privately for whoever pasted it: one engine call,
+   * text only. It's an Upload like a file, so ownership, the private page,
+   * translations and History work the same. It counts toward the daily
+   * Summaries once, only if it works, and never toward the video-minutes budget.
+   */
+  async function summarizeText(requester: Requester, input: string): Promise<SummaryResult> {
+    const text = input.trim();
+    if (!text) return { status: "rejected", reason: "empty" };
+    if (text.length > LONG_TEXT_MAX_CHARACTERS) {
+      return { status: "rejected", reason: "text-too-long", limitCharacters: LONG_TEXT_MAX_CHARACTERS };
+    }
+    const uploadId = `upload-${newId()}`;
+    const now = clock.now();
+    const day = utcDay(now);
+    const counters = summaryCounters(requester);
+    if (!(await reserveAll(counters, day, uploadId))) {
+      const hint = memberHint(requester);
+      return {
+        status: "rejected",
+        reason: "daily-limit-reached",
+        resetsAt: nextUtcMidnight(now),
+        ...(hint.memberDailyLimit && { memberDailyLimit: hint.memberDailyLimit }),
+      };
+    }
+    try {
+      const output = engineOutputSchema.parse(
+        await withDeadline(engine.summarizeText(text), generationTimeoutMs),
+      );
+      const summary = await store.saveSummary({
+        videoId: uploadId,
+        language: SUMMARY_LANGUAGE,
+        spokenLanguage: output.spokenLanguage,
+        // A text has no moments to jump to, whatever the engine says.
+        lengths: withoutTimestamps(output.lengths),
+        createdAt: clock.now().toISOString(),
+        ownerId: ownerKey(requester),
+        source: "text",
+      });
+      if (requester.kind === "member") {
+        await remember(requester.memberId, uploadId, summary.language).catch((error) =>
+          onFailure?.(error, { videoId: uploadId }),
+        );
+      }
+      return { status: "ready", summary };
+    } catch (error) {
+      onFailure?.(error, { videoId: uploadId });
+      await giveBackAll(counters, day, uploadId);
+      return { status: "rejected", reason: "summary-failed" };
+    }
+  }
+
+  /**
    * Deletes Guests' Upload Summaries (every language) 30 days after they were
    * made: no account can delete them, so they go by themselves. Returns how many.
    */
@@ -970,6 +1043,7 @@ export function createCore({
     sweepAbandonedUploads,
     sweepOldGuestUploads,
     sweepOldUsage,
+    summarizeText,
     requestSummary,
     requestNarration,
     naturalVoiceAllowance,

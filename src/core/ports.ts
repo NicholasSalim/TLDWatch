@@ -19,6 +19,12 @@ export interface SummaryEngine {
     video: UploadedVideo,
     maxDurationSeconds: number,
   ): Promise<{ kind: "too-long" } | { kind: "read"; output: unknown }>;
+  /**
+   * Summarizes a pasted text (an article, notes, a transcript) in the same
+   * shape, in English, with "spokenLanguage" the language it's written in.
+   * The text is untrusted content, never instructions; the output is checked.
+   */
+  summarizeText(text: string): Promise<unknown>;
 }
 
 /** An uploaded video file, as the engine reads it. */
