@@ -143,16 +143,29 @@ describe("what can be uploaded", () => {
     });
   });
 
-  it("goes by the stored bytes, not the type the browser declared", async () => {
+  it("refuses a file whose bytes are another kind than it was declared as, deleting it and counting nothing", async () => {
     const { core, engine, uploads } = setup();
     const started = await core.startUpload(member, { sizeBytes: 9, durationSeconds: 0, mimeType: "image/png" });
     if (started.status !== "ready") throw new Error("couldn't start");
     uploads.put(`m-1/${started.uploadId}`, { bytes: pdf(3), mimeType: "image/png" });
 
-    const result = await core.summarizeUpload(member, started.uploadId);
+    expect(await core.summarizeUpload(member, started.uploadId)).toEqual({
+      status: "rejected",
+      reason: "upload-not-supported",
+    });
+    expect(engine.fileCalls).toHaveLength(0);
+    expect(uploads.files.size).toBe(0);
+    expect((await core.summariesLeftToday(member)).left).toBe(10);
+  });
 
-    expect(result).toMatchObject({ status: "ready", summary: { source: "pdf" } });
-    expect(engine.fileCalls[0]?.mimeType).toBe("application/pdf");
+  it("names the type by the bytes when it was declared as the same kind", async () => {
+    const { core, engine, uploads } = setup();
+    const started = await core.startUpload(member, { sizeBytes: 9, durationSeconds: 0, mimeType: "image/jpeg" });
+    if (started.status !== "ready") throw new Error("couldn't start");
+    uploads.put(`m-1/${started.uploadId}`, { bytes: PNG, mimeType: "image/jpeg" });
+
+    expect(await core.summarizeUpload(member, started.uploadId)).toMatchObject({ status: "ready" });
+    expect(engine.fileCalls[0]?.mimeType).toBe("image/png");
   });
 
   it("is a video unless it says otherwise, as before", async () => {

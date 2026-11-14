@@ -101,6 +101,8 @@ describe("checking the uploaded file itself", () => {
   it.each([
     ["a GIF (which the engine can't read) the browser called a video", gif],
     ["a program the browser called a video", program],
+    ["an HTML page the browser called a video", { bytes: new TextEncoder().encode("<!DOCTYPE html><script>"), mimeType: "video/mp4" }],
+    ["a ZIP archive the browser called a video", { bytes: new Uint8Array([0x50, 0x4b, 3, 4, 0, 0]), mimeType: "video/mp4" }],
   ])("refuses %s, deleting it and counting nothing", async (_, file) => {
     const { core, engine, uploads } = setup();
     const started = await core.startUpload(member, clip);

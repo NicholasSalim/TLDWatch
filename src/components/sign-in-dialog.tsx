@@ -77,7 +77,7 @@ export function SignInDialog() {
           Continue with Google
         </button>
         <p className="mt-3 text-pretty text-xs leading-relaxed text-haze/80">
-          Videos are summarized by a third-party AI service. Returning Members can tick the box
+          Everything is summarized by a third-party AI service. Returning Members can tick the box
           again; it&apos;s only recorded once.
         </p>
       </form>

@@ -82,9 +82,11 @@ export function createSupabaseSummaryStore({
 
     async deleteOwnedBy(ownerId) {
       const { owner_id, guest_owner_id } = ownerColumns(ownerId);
+      // No owner means no Uploads to delete; never let it reach the table as a filter.
+      if (!owner_id && !guest_owner_id) throw new Error("deleteOwnedBy needs an owner");
       const { error } = owner_id
         ? await db.from("summaries").delete().eq("owner_id", owner_id)
-        : await db.from("summaries").delete().eq("guest_owner_id", guest_owner_id!);
+        : await db.from("summaries").delete().eq("guest_owner_id", guest_owner_id as string);
       if (error) throw error;
     },
 
