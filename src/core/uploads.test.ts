@@ -65,7 +65,7 @@ describe("starting an Upload", () => {
   it.each([
     ["over 30 minutes", { durationSeconds: 30 * 60 + 1 }, { reason: "video-too-long", limitMinutes: 30 }],
     ["over the file-size limit", { sizeBytes: 50 * 1024 * 1024 + 1 }, { reason: "upload-too-large", limitMb: 50 }],
-    ["not a video", { mimeType: "application/pdf" }, { reason: "upload-not-a-video" }],
+    ["not a type TLDWatch reads", { mimeType: "application/zip" }, { reason: "upload-not-supported" }],
   ])("turns away a file %s before it's uploaded", async (_, change, rejection) => {
     const { core } = setup();
     expect(await core.startUpload(member, { ...clip, ...change })).toEqual({ status: "rejected", ...rejection });
@@ -84,22 +84,22 @@ describe("checks before the upload", () => {
     });
   });
 
-  it("only takes video formats the engine can read", async () => {
+  it("only takes formats the engine can read", async () => {
     const { core } = setup();
     expect(await core.startUpload(member, { ...clip, mimeType: "video/x-matroska" })).toEqual({
       status: "rejected",
-      reason: "upload-not-a-video",
+      reason: "upload-not-supported",
     });
     expect((await core.startUpload(member, { ...clip, mimeType: "video/mov" })).status).toBe("ready");
   });
 });
 
 describe("checking the uploaded file itself", () => {
-  const pdf = { bytes: new TextEncoder().encode("%PDF-1.7\n..."), mimeType: "video/mp4" };
+  const gif = { bytes: new TextEncoder().encode("GIF89a..."), mimeType: "video/mp4" };
   const program = { bytes: new Uint8Array([0x4d, 0x5a, 0x90, 0]), mimeType: "video/mp4" };
 
   it.each([
-    ["a PDF the browser called a video", pdf],
+    ["a GIF (which the engine can't read) the browser called a video", gif],
     ["a program the browser called a video", program],
   ])("refuses %s, deleting it and counting nothing", async (_, file) => {
     const { core, engine, uploads } = setup();

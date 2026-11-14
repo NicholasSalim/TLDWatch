@@ -5,6 +5,7 @@
 import { DURATION_LIMIT_MINUTES } from "./limits";
 import { narrationScript } from "./narration";
 import type {
+  UploadKind,
   UploadStorage,
   Clock,
   NarrationAudioStore,
@@ -39,6 +40,8 @@ import {
   checkFile,
   FILE_HEAD_BYTES,
   LONG_TEXT_MAX_CHARACTERS,
+  PDF_MAX_PAGES,
+  pdfPageCount,
   UPLOAD_MIME_TYPES,
   UPLOADABLE_KINDS,
 } from "./file-kind";
@@ -129,7 +132,8 @@ export type SummaryRejection =
       memberDailyLimit?: number;
     }
   | { status: "rejected"; reason: "app-capacity-reached"; resetsAt: string }
-  | { status: "rejected"; reason: "text-too-long"; limitCharacters: number };
+  | { status: "rejected"; reason: "text-too-long"; limitCharacters: number }
+  | { status: "rejected"; reason: "pdf-too-long"; limitPages: number };
 
 export type SummaryResult =
   | {
@@ -194,7 +198,7 @@ export type HistoryItem = {
 
 export type UploadStart =
   | { status: "ready"; uploadId: string; uploadUrl: string }
-  | { status: "rejected"; reason: "upload-not-a-video" }
+  | { status: "rejected"; reason: "upload-not-supported" }
   | { status: "rejected"; reason: "upload-too-large"; limitMb: number }
   | { status: "rejected"; reason: "video-too-long"; limitMinutes: number; memberLimitMinutes?: number }
   | { status: "rejected"; reason: "daily-limit-reached"; resetsAt: string; memberDailyLimit?: number };
@@ -793,7 +797,7 @@ export function createCore({
     file: { sizeBytes: number; durationSeconds: number; mimeType: string },
   ): Promise<UploadStart> {
     if (!UPLOAD_TYPES.has(file.mimeType.toLowerCase())) {
-      return { status: "rejected", reason: "upload-not-a-video" };
+      return { status: "rejected", reason: "upload-not-supported" };
     }
     if (file.sizeBytes > uploadMaxMb * 1024 * 1024) {
       return { status: "rejected", reason: "upload-too-large", limitMb: uploadMaxMb };
@@ -864,6 +868,10 @@ export function createCore({
         return { status: "rejected", reason: "upload-not-supported" };
       }
       const file = { bytes: stored.bytes, mimeType: check.mimeType };
+      const kind = check.kind as UploadKind;
+      if (kind === "pdf" && (pdfPageCount(file.bytes) ?? 0) > PDF_MAX_PAGES) {
+        return { status: "rejected", reason: "pdf-too-long", limitPages: PDF_MAX_PAGES };
+      }
 
       const hint = memberHint(requester);
       if (!(await reserveAll(counters, day, uploadId))) {
@@ -877,7 +885,7 @@ export function createCore({
       reserved = true;
 
       const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
-      const read = await withDeadline(engine.summarizeVideoFile(file, limitMinutes * 60), UPLOAD_TIMEOUT_MS);
+      const read = await withDeadline(engine.summarizeFile(file, kind, limitMinutes * 60), UPLOAD_TIMEOUT_MS);
       if (read.kind === "too-long") {
         await giveBackAll(counters, day, uploadId);
         reserved = false;
@@ -893,9 +901,12 @@ export function createCore({
         videoId: uploadId,
         language: SUMMARY_LANGUAGE,
         spokenLanguage: output.spokenLanguage,
-        lengths: output.lengths,
+        // An image has no timeline (a PDF's "Timestamps" are its pages).
+        lengths: kind === "image" ? withoutTimestamps(output.lengths) : output.lengths,
         createdAt: clock.now().toISOString(),
         ownerId: owner,
+        // A video is the default, and stays implicit.
+        ...(kind !== "video" && { source: kind }),
       });
       // Only Members have a History.
       if (requester.kind === "member") {

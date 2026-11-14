@@ -15,10 +15,10 @@ export type FileCheck =
   | { ok: false; reason: "unsupported" | "mismatch" };
 
 /**
- * The kinds an Upload can be summarized from today. The rest are recognised
- * but not yet summarized (audio, PDFs, images and text files: ticket 21).
+ * The kinds that are uploaded as files. A text file isn't: the browser reads
+ * it and sends it like a pasted text, so it never reaches Storage.
  */
-export const UPLOADABLE_KINDS: ReadonlySet<FileKind> = new Set<FileKind>(["video"]);
+export const UPLOADABLE_KINDS: ReadonlySet<FileKind> = new Set<FileKind>(["video", "audio", "pdf", "image"]);
 
 /** Every type `checkFile` can find for an uploadable kind. */
 export const UPLOAD_MIME_TYPES = [
@@ -30,7 +30,33 @@ export const UPLOAD_MIME_TYPES = [
   "video/x-flv",
   "video/wmv",
   "video/mpeg",
+  "audio/mp3",
+  "audio/aac",
+  "audio/m4a",
+  "audio/wav",
+  "audio/aiff",
+  "audio/ogg",
+  "audio/flac",
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/heic",
+  "image/heif",
 ];
+
+/** The most pages a PDF may have: the engine reads up to 1,000. */
+export const PDF_MAX_PAGES = 1000;
+
+/**
+ * A PDF's page count, by counting its page objects; null when they can't be
+ * seen (compressed object streams hide them), so the engine's own limit applies.
+ */
+export function pdfPageCount(bytes: Uint8Array): number | null {
+  const text = new TextDecoder("latin1").decode(bytes);
+  const pages = text.match(/\/Type\s*\/Page(?![a-zA-Z])/g)?.length ?? 0;
+  return pages > 0 ? pages : null;
+}
 
 /** How many of a file's first bytes `checkFile` needs to see. */
 export const FILE_HEAD_BYTES = 4096;

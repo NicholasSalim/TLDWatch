@@ -193,7 +193,10 @@ export function SummaryView({
       </div>
 
       <div lang="en" className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <p className="text-sm text-haze">Spoken in {names.english}</p>
+        <p className="text-sm text-haze">
+          {summary.source && summary.source !== "video" && summary.source !== "audio" ? "Written" : "Spoken"} in{" "}
+          {names.english}
+        </p>
         {!isEnglish(spoken) && (
           <Segmented
             label="Summary language"
@@ -264,16 +267,16 @@ export function SummaryView({
       {content.timestamps.length > 0 && (
         <>
           <h3 lang="en" className="mt-6 text-xs font-semibold tracking-widest text-haze uppercase">
-            Timestamps
+            {summary.source === "pdf" ? "Pages" : "Timestamps"}
           </h3>
           <ol className="mt-2 space-y-0.5">
             {content.timestamps.map((t) => (
               <li key={`${t.seconds}-${t.label}`}>
                 {summary.ownerId ? (
-                  // No online video to jump to: plain times.
+                  // No online video to jump to: plain times (or a PDF's pages).
                   <p className="-mx-2 flex items-baseline gap-3 px-2 py-1.5 text-sm">
                     <span className="shrink-0 font-medium text-lumen tabular-nums">
-                      {formatTimestamp(t.seconds)}
+                      {summary.source === "pdf" ? `p. ${t.seconds}` : formatTimestamp(t.seconds)}
                     </span>
                     <span className="text-pretty text-mist/90">{t.label}</span>
                   </p>
