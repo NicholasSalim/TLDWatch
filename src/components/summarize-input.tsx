@@ -17,11 +17,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { SummariesLeft } from "@/core/core";
-import { judgeText, LONG_TEXT_MAX_CHARACTERS, UPLOADABLE_KINDS, type FileKind } from "@/core/file-kind";
+import { judgeText, LONG_TEXT_MAX_CHARACTERS, type FileKind } from "@/core/file-kind";
 import { LENGTH_LABELS, LENGTHS, type Length, type Summary, type SummarySource } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { useAutoplay } from "@/lib/autoplay";
-import { inspectFile, KIND_NAMES, UPLOAD_KINDS, UPLOAD_MAX_MB } from "@/lib/check-file";
+import { inspectFile, UPLOAD_KINDS, UPLOAD_MAX_MB } from "@/lib/check-file";
 import { openSignIn } from "@/lib/me";
 import { openUpload } from "@/components/upload-dialog";
 import { rejectionText } from "@/lib/rejection-text";
@@ -121,21 +121,26 @@ export function SummarizeInput() {
   };
 
   /**
-   * Sends a dropped, pasted or picked file on its way: checked here first,
-   * then on to the Upload dialog if it's a kind TLDWatch summarizes yet.
+   * Sends a dropped, pasted or picked file on its way, checked here first: a
+   * text file is read here and summarized like a pasted text; anything else
+   * goes to the Upload dialog.
    */
   const takeFile = async (file: File) => {
     setIsActive(true);
     const inspection = await inspectFile(file);
     if (!inspection.ok) return setNotice({ kind: "error", text: inspection.message });
-    if (!inspection.uploadable) {
-      return setNotice({
-        kind: "info",
-        text: `Summaries of ${KIND_NAMES[inspection.kind]}s are coming soon. For now, TLDWatch summarizes YouTube links and video files.`,
-      });
+    if (inspection.kind === "text") {
+      const judged = judgeText(await file.text());
+      if (judged.kind === "too-long") {
+        return setNotice({
+          kind: "error",
+          text: `That file has ${judged.characters.toLocaleString()} characters. TLDWatch summarizes up to ${judged.limit.toLocaleString()}; try a shorter part.`,
+        });
+      }
+      return summarizeText(await file.text());
     }
     setNotice(null);
-    openUpload({ file, mimeType: inspection.mimeType });
+    openUpload({ file, kind: inspection.kind, mimeType: inspection.mimeType });
   };
 
   /** Judges what was typed or pasted: a link to summarize, or a long text. */
@@ -478,8 +483,7 @@ function fitHeight(textarea: HTMLTextAreaElement) {
 }
 
 /**
- * The paperclip: a menu of what can be uploaded, each with its formats. Kinds
- * TLDWatch doesn't summarize yet are listed, marked "Soon".
+ * The paperclip: a menu of what can be uploaded, each with its formats.
  */
 function AttachMenu({ onPick }: { onPick: (file: File) => void }) {
   const [open, setOpen] = useState(false);
@@ -567,26 +571,17 @@ function AttachMenu({ onPick }: { onPick: (file: File) => void }) {
         >
           {UPLOAD_KINDS.map(({ kind, label, formats, accept: kindAccept }) => {
             const Icon = KIND_ICONS[kind];
-            const soon = !UPLOADABLE_KINDS.has(kind);
             return (
               <button
                 key={kind}
                 type="button"
                 role="menuitem"
-                disabled={soon}
                 onClick={() => choose(kindAccept)}
-                className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none disabled:cursor-default disabled:opacity-55 disabled:hover:bg-transparent"
+                className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none"
               >
                 <Icon className="mt-0.5 size-5 shrink-0 text-lumen" aria-hidden />
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2 text-sm font-medium text-mist">
-                    {label}
-                    {soon && (
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[0.6875rem] font-medium text-haze">
-                        Soon
-                      </span>
-                    )}
-                  </span>
+                  <span className="block text-sm font-medium text-mist">{label}</span>
                   <span className="block text-xs text-haze">{formats}</span>
                 </span>
               </button>

@@ -29,10 +29,12 @@ export function rejectionText(rejection: SummaryRejection): string {
       return "Reading a summary in other languages is for Members. Sign in to choose one.";
     case "language-not-offered":
       return "That language isn't offered. Try English or the video's original language.";
+    case "pdf-too-long":
+      return `That PDF is over ${rejection.limitPages.toLocaleString()} pages, the most TLDWatch can read. Try a shorter part of it.`;
     case "text-too-long":
       return `That text is too long. TLDWatch summarizes up to ${rejection.limitCharacters.toLocaleString()} characters; try a shorter part.`;
     case "upload-not-supported":
-      return "That file isn't one TLDWatch can summarize. Upload a video file, like an .mp4 or .mov.";
+      return "That file isn't one TLDWatch can summarize. Try a video, audio file, PDF or image.";
     case "upload-not-found":
       return "That upload couldn't be found. Please upload the file again.";
     case "summary-failed":

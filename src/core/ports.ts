@@ -12,11 +12,15 @@ export interface SummaryEngine {
    */
   summarizeYouTubeVideo(videoId: string): Promise<unknown>;
   /**
-   * Reads an uploaded video file the same way. It refuses, without summarizing,
-   * a video longer than `maxDurationSeconds`. Cleans up after itself either way.
+   * Reads an uploaded file of a kind (video, audio, PDF or image) the same
+   * way, in a shape for that kind: Timestamps for video and audio, pages
+   * (a Timestamp's `seconds` holds the page number) for a PDF. It refuses,
+   * without summarizing, a video longer than `maxDurationSeconds` when it can
+   * tell. Cleans up after itself either way.
    */
-  summarizeVideoFile(
-    video: UploadedVideo,
+  summarizeFile(
+    file: UploadedFile,
+    kind: UploadKind,
     maxDurationSeconds: number,
   ): Promise<{ kind: "too-long" } | { kind: "read"; output: unknown }>;
   /**
@@ -27,8 +31,11 @@ export interface SummaryEngine {
   summarizeText(text: string): Promise<unknown>;
 }
 
-/** An uploaded video file, as the engine reads it. */
-export type UploadedVideo = { bytes: Uint8Array; mimeType: string };
+/** An uploaded file, as the engine reads it: its bytes and its real type. */
+export type UploadedFile = { bytes: Uint8Array; mimeType: string };
+
+/** The kinds of file an Upload can be; text is sent as text, never stored. */
+export type UploadKind = "video" | "audio" | "pdf" | "image";
 
 /**
  * Private storage for Uploads while they're summarized. A path is
@@ -38,7 +45,7 @@ export interface UploadStorage {
   /** A short-lived URL the Member's browser uploads the file to, directly. */
   createUploadUrl(path: string): Promise<string>;
   /** The uploaded file, or null if there's none at that path. */
-  read(path: string): Promise<UploadedVideo | null>;
+  read(path: string): Promise<UploadedFile | null>;
   remove(path: string): Promise<void>;
   /** Deletes every file waiting in a Member's folder. */
   removeAllFor(memberId: string): Promise<void>;

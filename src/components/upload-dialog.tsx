@@ -2,11 +2,13 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileVideo, Upload, X } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import type { UploadStart } from "@/core/core";
+import type { UploadKind } from "@/core/ports";
 import type { SummaryResponse } from "@/lib/api-types";
 import { inspectFile, KIND_NAMES, UPLOAD_KINDS } from "@/lib/check-file";
 import { useMe } from "@/lib/me";
+import { SOURCE_ICONS } from "@/components/summary-view";
 import { rejectionText } from "@/lib/rejection-text";
 
 type Step =
@@ -15,8 +17,8 @@ type Step =
   | { kind: "summarizing" }
   | { kind: "error"; message: string };
 
-/** A file already checked in the browser (see inspectFile), with its real type. */
-export type CheckedFile = { file: File; mimeType: string };
+/** A file already checked in the browser (see inspectFile), with its real kind and type. */
+export type CheckedFile = { file: File; kind: UploadKind; mimeType: string };
 
 /**
  * Opens the Upload dialog from anywhere on the page, for a Member or a Guest, with a
@@ -26,12 +28,16 @@ export function openUpload(chosen?: CheckedFile) {
   window.dispatchEvent(new CustomEvent<CheckedFile | undefined>("tldwatch:upload", { detail: chosen }));
 }
 
-const VIDEO_ACCEPT = UPLOAD_KINDS.find((k) => k.kind === "video")!.accept;
+/** Everything uploaded as a file (text files go in the main input instead). */
+const FILE_ACCEPT = UPLOAD_KINDS.filter((k) => k.kind !== "text")
+  .map((k) => k.accept)
+  .join(",");
 
 /**
- * Uploading a video file, for Members: a warning to accept, a file checked in
- * the browser before anything is sent, then a direct upload to private
- * storage and a private Summary. The file is deleted once it's summarized.
+ * Uploading a file (video, audio, PDF or image), for a Member or a Guest: a
+ * warning to accept, a file checked in the browser before anything is sent,
+ * then a direct upload to private storage and a private Summary. The file is
+ * deleted once it's summarized.
  */
 export function UploadDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -62,25 +68,27 @@ export function UploadDialog() {
   const pick = async (file: File) => {
     const inspection = await inspectFile(file);
     if (!inspection.ok) return setStep({ kind: "error", message: inspection.message });
-    if (!inspection.uploadable) {
+    if (inspection.kind === "text") {
       return setStep({
         kind: "error",
-        message: `Summaries of ${KIND_NAMES[inspection.kind]}s are coming soon. For now, choose a video file.`,
+        message: "A text file goes in the box on the home page: drop it there, or paste its text.",
       });
     }
-    void send({ file, mimeType: inspection.mimeType });
+    void send({ file, kind: inspection.kind, mimeType: inspection.mimeType });
   };
 
-  const send = async ({ file, mimeType }: CheckedFile) => {
+  const send = async ({ file, kind, mimeType }: CheckedFile) => {
+    setChosen({ file, kind, mimeType });
     setStep({ kind: "uploading", percent: 0 });
     try {
-      const durationSeconds = (await videoDuration(file)) ?? 0;
+      // Video and audio are length-checked before the wait; the rest have no length.
+      const durationSeconds = kind === "video" || kind === "audio" ? ((await mediaDuration(file, kind)) ?? 0) : 0;
       const start = await postJson<UploadStart>("/api/uploads", {
         sizeBytes: file.size,
         durationSeconds,
         mimeType,
       });
-      if (start.status !== "ready") return setStep({ kind: "error", message: startRejection(start) });
+      if (start.status !== "ready") return setStep({ kind: "error", message: startRejection(start, kind) });
 
       await putWithProgress(start.uploadUrl, file, mimeType, (percent) => setStep({ kind: "uploading", percent }));
       setStep({ kind: "summarizing" });
@@ -105,7 +113,7 @@ export function UploadDialog() {
       <div className="p-6">
         <div className="flex items-start justify-between gap-4">
           <h2 id={titleId} className="font-heading text-xl font-semibold">
-            Upload a video
+            {chosen ? TITLES[chosen.kind] : "Upload a file"}
           </h2>
           <button
             type="button"
@@ -118,15 +126,15 @@ export function UploadDialog() {
           </button>
         </div>
         <p className="mt-2 text-pretty text-sm leading-relaxed text-haze">
-          Summarize a clip saved from TikTok, Instagram or your device, up to{" "}
-          {me?.member ? 30 : 15} minutes and 50 MB.{" "}
+          Summarize a video, audio file, PDF or image, up to 50 MB. Videos and audio can be up to{" "}
+          {me?.member ? 30 : 15} minutes, and PDFs up to 1,000 pages.{" "}
           {me?.member
             ? "Its Summary is private to you, and it's in your History."
             : "Its Summary is private to this browser: there's no account to keep it, so clearing your browser data loses it, and it's deleted after 30 days."}
         </p>
 
         <div className="mt-4 rounded-xl border border-lumen/25 bg-lumen/6 p-3.5 text-pretty text-sm leading-relaxed text-mist/90">
-          Your video is sent to a third-party AI service to be summarized, and may be reviewed by
+          Your file is sent to a third-party AI service to be summarized, and may be reviewed by
           people there. Don&apos;t upload anything private or personal. The file is deleted once
           it&apos;s summarized.
         </div>
@@ -147,7 +155,9 @@ export function UploadDialog() {
           <Progress label={`Uploading… ${step.percent}%`} percent={step.percent} />
         )}
         {step.kind === "summarizing" && (
-          <Progress label="Summarizing your video. This can take a minute or two." />
+          <Progress
+            label={`Summarizing your ${chosen ? KIND_NAMES[chosen.kind] : "file"}. This can take a minute or two.`}
+          />
         )}
         {step.kind === "error" && (
           <p role="status" className="mt-4 text-pretty text-sm text-negative">
@@ -157,8 +167,8 @@ export function UploadDialog() {
 
         {chosen && !busy && (
           <p className="mt-4 flex items-center gap-2 truncate text-sm text-mist">
-            <FileVideo className="size-4 shrink-0 text-haze" aria-hidden />
-            <span className="truncate">{chosen.file.name || "Pasted video"}</span>
+            <KindIcon kind={chosen.kind} />
+            <span className="truncate">{chosen.file.name || `Pasted ${KIND_NAMES[chosen.kind]}`}</span>
             <span className="shrink-0 text-haze">{megabytes(chosen.file.size)}</span>
           </p>
         )}
@@ -186,10 +196,10 @@ export function UploadDialog() {
             }`}
           >
             <Upload className="size-4" aria-hidden />
-            Choose a video file
+            Choose a file
             <input
               type="file"
-              accept={VIDEO_ACCEPT}
+              accept={FILE_ACCEPT}
               disabled={!understood}
               className="sr-only"
               onChange={(e) => {
@@ -231,23 +241,41 @@ function megabytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
-function startRejection(start: Exclude<UploadStart, { status: "ready" }>): string {
+const TITLES: Record<UploadKind, string> = {
+  video: "Upload a video",
+  audio: "Upload an audio file",
+  pdf: "Upload a PDF",
+  image: "Upload an image",
+};
+
+function KindIcon({ kind }: { kind: UploadKind }) {
+  const Icon = SOURCE_ICONS[kind];
+  return <Icon className="size-4 shrink-0 text-haze" aria-hidden />;
+}
+
+function startRejection(start: Exclude<UploadStart, { status: "ready" }>, kind: UploadKind): string {
   switch (start.reason) {
-    case "upload-not-a-video":
-      return "That file isn't a video. Choose a video file, like an .mp4 or .mov.";
+    case "upload-not-supported":
+      return "TLDWatch can't summarize that kind of file. Try a video, audio file, PDF or image.";
     case "upload-too-large":
       return `That file is over ${start.limitMb} MB, the largest TLDWatch accepts.`;
-    // Both say what a Member could do, when it's a Guest who's asking.
     case "video-too-long":
+      if (kind === "audio") {
+        return start.memberLimitMinutes
+          ? `That recording is over ${start.limitMinutes} minutes, the limit for Guests. Members can summarize up to ${start.memberLimitMinutes} minutes.`
+          : `That recording is over ${start.limitMinutes} minutes, the longest TLDWatch can summarize.`;
+      }
+      return rejectionText(start);
+    // Says what a Member could do, when it's a Guest who's asking.
     case "daily-limit-reached":
       return rejectionText(start);
   }
 }
 
-/** The video's length, read in the browser before uploading; null if it can't tell. */
-function videoDuration(file: File): Promise<number | null> {
+/** A video's or recording's length, read in the browser before uploading; null if it can't tell. */
+function mediaDuration(file: File, kind: "video" | "audio"): Promise<number | null> {
   return new Promise((resolve) => {
-    const video = document.createElement("video");
+    const video = document.createElement(kind);
     const url = URL.createObjectURL(file);
     const done = (seconds: number | null) => {
       URL.revokeObjectURL(url);

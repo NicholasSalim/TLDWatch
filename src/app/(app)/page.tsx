@@ -9,7 +9,8 @@ export default function Home() {
           Skip the video. Keep the point.
         </h1>
         <p className="mt-5 max-w-[52ch] text-center text-base leading-relaxed text-balance text-haze sm:text-lg">
-          Paste a YouTube link to read the summary, or listen to it, in about a minute.
+          Paste a YouTube link or a long text, or drop a file. Read the summary, or listen to it,
+          in about a minute.
         </p>
 
         <div className="mt-12 flex w-full justify-center sm:mt-14">
@@ -17,13 +18,13 @@ export default function Home() {
         </div>
 
         <p className="mt-10 max-w-[52ch] text-center text-sm leading-relaxed text-pretty text-haze/80">
-          Every summary comes with key points, clickable timestamps, and a verdict on whether the
-          full video is worth your time.
+          Every summary comes with key points, timestamps or pages where there are any, and a
+          verdict on whether the whole thing is worth your time.
         </p>
       </main>
 
       <footer className="mx-auto w-full max-w-5xl px-5 pb-6 text-center text-xs text-haze/70 sm:px-8">
-        Works with public YouTube videos. For ages 18 and over.{" "}
+        Works with public YouTube videos, and your own files. For ages 18 and over.{" "}
         <Link href="/terms" className="underline underline-offset-2 hover:text-mist">
           Terms
         </Link>

@@ -114,8 +114,7 @@ export const getCore: () => Core = once(() =>
   createCore({
     engine: {
       summarizeYouTubeVideo: (videoId) => engine().summarizeYouTubeVideo(videoId),
-      summarizeVideoFile: (video, maxDurationSeconds) =>
-        engine().summarizeVideoFile(video, maxDurationSeconds),
+      summarizeFile: (file, kind, maxDurationSeconds) => engine().summarizeFile(file, kind, maxDurationSeconds),
       summarizeText: (text) => engine().summarizeText(text),
     } satisfies SummaryEngine,
     translator: {

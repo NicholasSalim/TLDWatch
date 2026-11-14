@@ -1,4 +1,4 @@
-import { checkFile, FILE_HEAD_BYTES, UPLOADABLE_KINDS, type FileKind } from "@/core/file-kind";
+import { checkFile, FILE_HEAD_BYTES, type FileKind } from "@/core/file-kind";
 
 /** The largest file the browser lets through; the server checks again with its own limit. */
 export const UPLOAD_MAX_MB = 50;
@@ -31,7 +31,7 @@ export const KIND_NAMES: Record<FileKind, string> = {
 };
 
 export type Inspection =
-  | { ok: true; kind: FileKind; mimeType: string; uploadable: boolean }
+  | { ok: true; kind: FileKind; mimeType: string }
   | { ok: false; message: string };
 
 /**
@@ -53,5 +53,5 @@ export async function inspectFile(file: File): Promise<Inspection> {
           : "TLDWatch can't summarize that kind of file. Try a video, audio file, PDF, image or plain-text file.",
     };
   }
-  return { ...check, uploadable: UPLOADABLE_KINDS.has(check.kind) };
+  return check;
 }

@@ -5,7 +5,8 @@
 import type { Length, LengthContent } from "./summary";
 import type {
   UploadStorage,
-  UploadedVideo,
+  UploadedFile,
+  UploadKind,
   Clock,
   NarrationAudioStore,
   NaturalVoice,
@@ -71,14 +72,19 @@ export class FakeSummaryEngine implements SummaryEngine {
   }
 
   /** Files it was given, and what to answer: a video's length decides "too-long". */
-  fileCalls: UploadedVideo[] = [];
+  fileCalls: UploadedFile[] = [];
   fileDurationSeconds = 120;
   failFiles = false;
 
-  async summarizeVideoFile(video: UploadedVideo, maxDurationSeconds: number) {
-    this.fileCalls.push(video);
+  /** The kind each file was read as. */
+  fileKinds: UploadKind[] = [];
+
+  async summarizeFile(file: UploadedFile, kind: UploadKind, maxDurationSeconds: number) {
+    this.fileCalls.push(file);
+    this.fileKinds.push(kind);
     if (this.failFiles) throw new Error("engine couldn't read the file");
-    if (this.fileDurationSeconds > maxDurationSeconds) return { kind: "too-long" as const };
+    // Only a video's length is known to the engine.
+    if (kind === "video" && this.fileDurationSeconds > maxDurationSeconds) return { kind: "too-long" as const };
     return { kind: "read" as const, output: this.respond("upload") };
   }
 
@@ -274,7 +280,7 @@ export class InMemoryNarrationAudioStore implements NarrationAudioStore {
 export const MP4_HEAD = new Uint8Array([0, 0, 0, 0x20, ...new TextEncoder().encode("ftypisom"), 0, 0, 2, 0]);
 
 export class InMemoryUploadStorage implements UploadStorage {
-  files = new Map<string, UploadedVideo>();
+  files = new Map<string, UploadedFile>();
   uploadedAt = new Map<string, string>();
   removed: string[] = [];
 
@@ -297,7 +303,7 @@ export class InMemoryUploadStorage implements UploadStorage {
   /** What the Member's browser does with the URL. */
   put(
     path: string,
-    video: UploadedVideo = { bytes: MP4_HEAD, mimeType: "video/mp4" },
+    video: UploadedFile = { bytes: MP4_HEAD, mimeType: "video/mp4" },
     at = "2026-11-12T10:00:00.000Z",
   ) {
     this.files.set(path, video);
