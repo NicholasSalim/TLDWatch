@@ -1,5 +1,5 @@
 import type { UploadStart } from "@/core/core";
-import { isSameOrigin, signedInMemberId } from "@/server/auth";
+import { isSameOrigin, requesterFrom } from "@/server/auth";
 import { getCore } from "@/server/core";
 
 /**
@@ -17,13 +17,14 @@ export async function POST(request: Request) {
   };
   const mimeType = typeof field("mimeType") === "string" ? (field("mimeType") as string) : "";
 
-  const memberId = await signedInMemberId();
   let result: UploadStart;
   try {
-    result = await getCore().startUpload(
-      memberId ? { kind: "member", memberId } : { kind: "guest", guestId: "", ipHash: "" },
-      { sizeBytes: number("sizeBytes"), durationSeconds: number("durationSeconds"), mimeType },
-    );
+    // A Member, or a Guest by their signed cookie (given one now if they have none).
+    result = await getCore().startUpload(await requesterFrom(request), {
+      sizeBytes: number("sizeBytes"),
+      durationSeconds: number("durationSeconds"),
+      mimeType,
+    });
   } catch (error) {
     console.error("Couldn't start an Upload", error);
     return Response.json({ error: "unavailable" }, { status: 503 });

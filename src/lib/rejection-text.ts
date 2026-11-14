@@ -29,8 +29,6 @@ export function rejectionText(rejection: SummaryRejection): string {
       return "Reading a summary in other languages is for Members. Sign in to choose one.";
     case "language-not-offered":
       return "That language isn't offered. Try English or the video's original language.";
-    case "upload-members-only":
-      return "Uploading a video file is for Members. Sign in to upload clips from TikTok, Instagram or your device.";
     case "upload-not-supported":
       return "That file isn't one TLDWatch can summarize. Upload a video file, like an .mp4 or .mov.";
     case "upload-not-found":

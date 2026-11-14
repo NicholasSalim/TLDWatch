@@ -5,6 +5,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import type { SummaryStore } from "@/core/ports";
+import { isGuestOwner } from "@/core/requester";
 import type { Summary } from "@/core/summary";
 
 type SummaryRow = {
@@ -14,9 +15,11 @@ type SummaryRow = {
   lengths: Summary["lengths"];
   created_at: string;
   owner_id: string | null;
+  guest_owner_id: string | null;
 };
 
-const COLUMNS = "video_id, language, spoken_language, lengths, created_at, owner_id";
+const COLUMNS = "video_id, language, spoken_language, lengths, created_at, owner_id, guest_owner_id";
+const GUEST_PREFIX = "guest-";
 
 const fromRow = (row: SummaryRow): Summary => ({
   videoId: row.video_id,
@@ -24,8 +27,18 @@ const fromRow = (row: SummaryRow): Summary => ({
   spokenLanguage: row.spoken_language,
   lengths: row.lengths,
   createdAt: row.created_at,
+  // The core knows one owner key; the table keeps Members and Guests apart.
   ...(row.owner_id && { ownerId: row.owner_id }),
+  ...(row.guest_owner_id && { ownerId: GUEST_PREFIX + row.guest_owner_id }),
 });
+
+/** An owner key as the two owner columns. */
+function ownerColumns(ownerId: string | undefined) {
+  if (!ownerId) return { owner_id: null, guest_owner_id: null };
+  return isGuestOwner(ownerId)
+    ? { owner_id: null, guest_owner_id: ownerId.slice(GUEST_PREFIX.length) }
+    : { owner_id: ownerId, guest_owner_id: null };
+}
 
 export function createSupabaseSummaryStore({
   url,
@@ -65,8 +78,30 @@ export function createSupabaseSummaryStore({
     },
 
     async deleteOwnedBy(ownerId) {
-      const { error } = await db.from("summaries").delete().eq("owner_id", ownerId);
+      const { owner_id, guest_owner_id } = ownerColumns(ownerId);
+      const { error } = owner_id
+        ? await db.from("summaries").delete().eq("owner_id", owner_id)
+        : await db.from("summaries").delete().eq("guest_owner_id", guest_owner_id!);
       if (error) throw error;
+    },
+
+    async deleteGuestOwnedBefore(cutoff) {
+      // Old Guest Uploads, by their English Summary (the first one made)...
+      const { data, error } = await db
+        .from("summaries")
+        .select("video_id")
+        .not("guest_owner_id", "is", null)
+        .eq("language", "english")
+        .lt("created_at", cutoff)
+        .limit(1000)
+        .returns<{ video_id: string }[]>();
+      if (error) throw error;
+      const ids = data.map((row) => row.video_id);
+      if (ids.length === 0) return 0;
+      // ...then every language of each.
+      const { error: deleteError } = await db.from("summaries").delete().in("video_id", ids);
+      if (deleteError) throw deleteError;
+      return ids.length;
     },
 
     async saveSummary(summary) {
@@ -78,7 +113,7 @@ export function createSupabaseSummaryStore({
           spoken_language: summary.spokenLanguage,
           lengths: summary.lengths,
           created_at: summary.createdAt,
-          owner_id: summary.ownerId ?? null,
+          ...ownerColumns(summary.ownerId),
         },
         { onConflict: "video_id,language", ignoreDuplicates: true },
       );

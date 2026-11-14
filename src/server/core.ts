@@ -128,6 +128,7 @@ export const getCore: () => Core = once(() =>
       findSummaries: (videoIds, language) => store().findSummaries(videoIds, language),
       saveSummary: (summary) => store().saveSummary(summary),
       deleteOwnedBy: (ownerId) => store().deleteOwnedBy(ownerId),
+      deleteGuestOwnedBefore: (cutoff) => store().deleteGuestOwnedBefore(cutoff),
     } satisfies SummaryStore,
     usage: {
       tryUse: (counter, day, amount, limit) => usage().tryUse(counter, day, amount, limit),

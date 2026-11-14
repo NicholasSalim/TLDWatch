@@ -21,7 +21,7 @@ import { LENGTH_LABELS, LENGTHS, type Length, type Summary } from "@/core/summar
 import { parseVideoUrl } from "@/core/video-url";
 import { useAutoplay } from "@/lib/autoplay";
 import { inspectFile, KIND_NAMES, UPLOAD_KINDS, UPLOAD_MAX_MB } from "@/lib/check-file";
-import { openSignIn, useMe } from "@/lib/me";
+import { openSignIn } from "@/lib/me";
 import { openUpload } from "@/components/upload-dialog";
 import { rejectionText } from "@/lib/rejection-text";
 import { fetchSummary } from "@/lib/summary-client";
@@ -67,7 +67,6 @@ export function SummarizeInput() {
   const [length, setLength] = useState<Length>("medium");
   const [language, setLanguage] = useState<Language>("english");
   const [autoplay, setAutoplay] = useAutoplay();
-  const me = useMe();
   const [notice, setNotice] = useState<Notice | null>(null);
   const [summariesLeft, setSummariesLeft] = useState<SummariesLeft | null>(null);
   const wrapperRef = useRef<HTMLFormElement>(null);
@@ -131,13 +130,6 @@ export function SummarizeInput() {
       return setNotice({
         kind: "info",
         text: `Summaries of ${KIND_NAMES[inspection.kind]}s are coming soon. For now, TLDWatch summarizes YouTube links and video files.`,
-      });
-    }
-    if (!me?.member) {
-      return setNotice({
-        kind: "error",
-        text: "Uploading a video file is for Members for now. Sign in to upload it.",
-        offerMembership: true,
       });
     }
     setNotice(null);
@@ -255,7 +247,7 @@ export function SummarizeInput() {
         )}
       >
         <div className="flex items-end gap-1.5 p-2.5 sm:gap-2 sm:p-3">
-          <AttachMenu isMember={!!me?.member} onPick={(file) => void takeFile(file)} />
+          <AttachMenu onPick={(file) => void takeFile(file)} />
 
           <div className="relative min-w-0 flex-1 self-center">
             <textarea
@@ -473,7 +465,7 @@ function fitHeight(textarea: HTMLTextAreaElement) {
  * The paperclip: a menu of what can be uploaded, each with its formats. Kinds
  * TLDWatch doesn't summarize yet are listed, marked "Soon".
  */
-function AttachMenu({ isMember, onPick }: { isMember: boolean; onPick: (file: File) => void }) {
+function AttachMenu({ onPick }: { onPick: (file: File) => void }) {
   const [open, setOpen] = useState(false);
   const [accept, setAccept] = useState("");
   // Where the menu opens on wider screens: just below the paperclip.
@@ -503,10 +495,8 @@ function AttachMenu({ isMember, onPick }: { isMember: boolean; onPick: (file: Fi
     };
   }, [open]);
 
-  const choose = (kind: FileKind, kindAccept: string) => {
+  const choose = (kindAccept: string) => {
     setOpen(false);
-    // Uploading is for Members (until Guests' Uploads arrive): ask before they pick a file.
-    if (kind === "video" && !isMember) return openSignIn();
     setAccept(kindAccept);
     // Let React set the accept list before the picker opens.
     setTimeout(() => fileInput.current?.click(), 0);
@@ -568,7 +558,7 @@ function AttachMenu({ isMember, onPick }: { isMember: boolean; onPick: (file: Fi
                 type="button"
                 role="menuitem"
                 disabled={soon}
-                onClick={() => choose(kind, kindAccept)}
+                onClick={() => choose(kindAccept)}
                 className="flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-white/8 focus-visible:bg-white/8 focus-visible:outline-none disabled:cursor-default disabled:opacity-55 disabled:hover:bg-transparent"
               >
                 <Icon className="mt-0.5 size-5 shrink-0 text-lumen" aria-hidden />

@@ -6,6 +6,7 @@ import { FileVideo, Upload, X } from "lucide-react";
 import type { UploadStart } from "@/core/core";
 import type { SummaryResponse } from "@/lib/api-types";
 import { inspectFile, KIND_NAMES, UPLOAD_KINDS } from "@/lib/check-file";
+import { useMe } from "@/lib/me";
 import { rejectionText } from "@/lib/rejection-text";
 
 type Step =
@@ -18,7 +19,7 @@ type Step =
 export type CheckedFile = { file: File; mimeType: string };
 
 /**
- * Opens the Upload dialog from anywhere on the page (Members only), with a
+ * Opens the Upload dialog from anywhere on the page, for a Member or a Guest, with a
  * file already chosen (dropped, pasted or picked from the input) or without.
  */
 export function openUpload(chosen?: CheckedFile) {
@@ -35,6 +36,7 @@ const VIDEO_ACCEPT = UPLOAD_KINDS.find((k) => k.kind === "video")!.accept;
 export function UploadDialog() {
   const dialog = useRef<HTMLDialogElement>(null);
   const router = useRouter();
+  const me = useMe();
   const [understood, setUnderstood] = useState(false);
   const [step, setStep] = useState<Step>({ kind: "choose" });
   const [chosen, setChosen] = useState<CheckedFile | null>(null);
@@ -116,8 +118,11 @@ export function UploadDialog() {
           </button>
         </div>
         <p className="mt-2 text-pretty text-sm leading-relaxed text-haze">
-          Summarize a clip saved from TikTok, Instagram or your device, up to 30 minutes and 50 MB.
-          Its Summary is private to you.
+          Summarize a clip saved from TikTok, Instagram or your device, up to{" "}
+          {me?.member ? 30 : 15} minutes and 50 MB.{" "}
+          {me?.member
+            ? "Its Summary is private to you, and it's in your History."
+            : "Its Summary is private to this browser: there's no account to keep it, so clearing your browser data loses it, and it's deleted after 30 days."}
         </p>
 
         <div className="mt-4 rounded-xl border border-lumen/25 bg-lumen/6 p-3.5 text-pretty text-sm leading-relaxed text-mist/90">
@@ -228,14 +233,12 @@ function megabytes(bytes: number): string {
 
 function startRejection(start: Exclude<UploadStart, { status: "ready" }>): string {
   switch (start.reason) {
-    case "upload-members-only":
-      return "Uploading is for Members. Sign in to upload a video.";
     case "upload-not-a-video":
       return "That file isn't a video. Choose a video file, like an .mp4 or .mov.";
     case "upload-too-large":
       return `That file is over ${start.limitMb} MB, the largest TLDWatch accepts.`;
+    // Both say what a Member could do, when it's a Guest who's asking.
     case "video-too-long":
-      return `That video is over ${start.limitMinutes} minutes, the longest TLDWatch can summarize.`;
     case "daily-limit-reached":
       return rejectionText(start);
   }

@@ -141,6 +141,18 @@ export class InMemorySummaryStore implements SummaryStore {
     }
   }
 
+  async deleteGuestOwnedBefore(cutoff: string) {
+    const old = new Set(
+      [...this.summaries.values()]
+        .filter((s) => s.ownerId?.startsWith("guest-") && s.language === "english" && s.createdAt < cutoff)
+        .map((s) => s.videoId),
+    );
+    for (const [key, summary] of this.summaries) {
+      if (old.has(summary.videoId)) this.summaries.delete(key);
+    }
+    return old.size;
+  }
+
   async saveSummary(summary: Summary) {
     const key = `${summary.videoId}:${summary.language}`;
     const existing = this.summaries.get(key);

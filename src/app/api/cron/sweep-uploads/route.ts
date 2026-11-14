@@ -2,7 +2,8 @@ import { getCore } from "@/server/core";
 
 /**
  * Daily housekeeping: deletes uploaded files nobody asked to summarize (a
- * closed tab, say) and usage counts older than last month. Vercel Cron calls
+ * closed tab, say), Guests' Upload Summaries after 30 days, and usage counts
+ * older than last month. Vercel Cron calls
  * this daily (vercel.json), sending CRON_SECRET as a bearer token.
  */
 export async function GET(request: Request) {
@@ -12,8 +13,9 @@ export async function GET(request: Request) {
   }
   try {
     const removed = await getCore().sweepAbandonedUploads();
+    const guestUploadsRemoved = await getCore().sweepOldGuestUploads();
     await getCore().sweepOldUsage();
-    return Response.json({ removed });
+    return Response.json({ removed, guestUploadsRemoved });
   } catch (error) {
     console.error("Couldn't sweep abandoned Uploads", error);
     return Response.json({ error: "unavailable" }, { status: 503 });

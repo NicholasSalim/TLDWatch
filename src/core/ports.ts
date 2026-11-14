@@ -51,6 +51,12 @@ export interface SummaryStore {
   saveSummary(summary: Summary): Promise<Summary>;
   /** Deletes every Summary a Member owns (their Uploads, in every language). */
   deleteOwnedBy(ownerId: string): Promise<void>;
+  /**
+   * Deletes every Upload owned by a Guest (an owner starting "guest-") whose
+   * first Summary was made before `cutoff` (an ISO time), in every language.
+   * Returns how many Uploads went.
+   */
+  deleteGuestOwnedBefore(cutoff: string): Promise<number>;
 }
 
 export interface Translator {
