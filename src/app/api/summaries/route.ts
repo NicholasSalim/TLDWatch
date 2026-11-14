@@ -1,12 +1,15 @@
 import { parseSummaryLanguage } from "@/lib/summary-language";
 import { getCore } from "@/server/core";
-import { requesterFrom } from "@/server/auth";
+import { isSameOrigin, requesterFrom } from "@/server/auth";
 import type { SummaryResponse } from "@/lib/api-types";
 
 // Reading a new video can take a while; stored Summaries return at once.
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
+  // Only TLDWatch's own pages may ask: another site can't make its visitors'
+  // browsers spend TLDWatch's Summaries.
+  if (!isSameOrigin(request)) return Response.json({ error: "forbidden" }, { status: 403 });
   const body: unknown = await request.json().catch(() => null);
   const field = (name: string): unknown =>
     body && typeof body === "object" && name in body ? (body as Record<string, unknown>)[name] : undefined;
