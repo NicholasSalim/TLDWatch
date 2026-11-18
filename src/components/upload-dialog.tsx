@@ -4,11 +4,14 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, X } from "lucide-react";
 import type { UploadStart } from "@/core/core";
-import type { UploadKind } from "@/core/ports";
+import { PDF_MAX_PAGES } from "@/core/file-kind";
+import { DURATION_LIMIT_MINUTES, UPLOAD_MAX_MB } from "@/core/limits";
+import type { UploadKind } from "@/core/summary";
 import type { SummaryResponse } from "@/lib/api-types";
 import { inspectFile, KIND_NAMES, UPLOAD_KINDS } from "@/lib/check-file";
 import { useMe } from "@/lib/me";
 import { SOURCE_ICONS } from "@/components/summary-view";
+import { postJson } from "@/lib/json-fetch";
 import { rejectionText } from "@/lib/rejection-text";
 
 type Step =
@@ -83,17 +86,21 @@ export function UploadDialog() {
     try {
       // Video and audio are length-checked before the wait; the rest have no length.
       const durationSeconds = kind === "video" || kind === "audio" ? ((await mediaDuration(file, kind)) ?? 0) : 0;
-      const start = await postJson<UploadStart>("/api/uploads", {
-        sizeBytes: file.size,
-        durationSeconds,
-        mimeType,
-      });
+      const start = await postJson<UploadStart | null>(
+        "/api/uploads",
+        { sizeBytes: file.size, durationSeconds, mimeType },
+        null,
+      );
+      if (!start) throw new Error("The upload couldn't start");
       if (start.status !== "ready") return setStep({ kind: "error", message: startRejection(start, kind) });
 
       await putWithProgress(start.uploadUrl, file, mimeType, (percent) => setStep({ kind: "uploading", percent }));
       setStep({ kind: "summarizing" });
 
-      const result = await postJson<SummaryResponse>(`/api/uploads/${start.uploadId}`, {});
+      const result = await postJson<SummaryResponse>(`/api/uploads/${start.uploadId}`, {}, {
+        status: "rejected",
+        reason: "summary-failed",
+      });
       if (result.status !== "ready") return setStep({ kind: "error", message: rejectionText(result) });
       dialog.current?.close();
       router.push(`/u/${start.uploadId}`);
@@ -126,8 +133,9 @@ export function UploadDialog() {
           </button>
         </div>
         <p className="mt-2 text-pretty text-sm leading-relaxed text-haze">
-          Summarize a video, audio file, PDF or image, up to 50 MB. Videos and audio can be up to{" "}
-          {me?.member ? 30 : 15} minutes, and PDFs up to 1,000 pages.{" "}
+          Summarize a video, audio file, PDF or image, up to {UPLOAD_MAX_MB} MB. Videos and audio can be up
+          to {DURATION_LIMIT_MINUTES[me?.member ? "member" : "guest"]} minutes, and PDFs up to{" "}
+          {PDF_MAX_PAGES.toLocaleString("en-US")} pages.{" "}
           {me?.member
             ? "Its Summary is private to you, and it's in your History."
             : "Its Summary is private to this browser: there's no account to keep it, so clearing your browser data loses it, and it's deleted after 30 days."}
@@ -289,17 +297,6 @@ function mediaDuration(file: File, kind: "video" | "audio"): Promise<number | nu
   });
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  // Refusals come back as JSON with a status; anything else is a real failure.
-  const data: unknown = await response.json();
-  if (!data || typeof data !== "object" || !("status" in data)) throw new Error(`HTTP ${response.status}`);
-  return data as T;
-}
 
 /** Uploads the file straight to private storage, reporting progress. */
 function putWithProgress(

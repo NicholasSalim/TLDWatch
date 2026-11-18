@@ -2,10 +2,16 @@
  * The TLDWatch core: every business rule, free of any framework.
  * Route handlers turn requests into calls here and results into responses.
  */
-import { DURATION_LIMIT_MINUTES } from "./limits";
+import {
+  DEFAULT_LIMITS,
+  DURATION_LIMIT_MINUTES,
+  HISTORY_PAGE_SIZE,
+  NATURAL_VOICE_MONTHLY_CHARACTERS,
+  UPLOAD_MAX_MB,
+  type UsageLimits,
+} from "./limits";
 import { narrationScript } from "./narration";
 import type {
-  UploadKind,
   UploadStorage,
   Clock,
   NarrationAudioStore,
@@ -23,6 +29,7 @@ import { ownerKey, type Requester } from "./requester";
 import {
   baseLanguage,
   engineOutputSchema,
+  type EngineOutput,
   normalizeLanguage,
   isEnglish,
   textLanguageOf,
@@ -44,27 +51,9 @@ import {
   PDF_MAX_PAGES,
   pdfPageCount,
   UPLOAD_MIME_TYPES,
-  UPLOADABLE_KINDS,
+  isUploadable,
 } from "./file-kind";
 import { isVideoId, parseVideoUrl, type VideoUrlRejection } from "./video-url";
-
-export type UsageLimits = {
-  /** New Summaries a Guest (one anonymous cookie) may make per UTC day. */
-  guestDailySummaries: number;
-  /** New Summaries all Guests behind one IP address may make per UTC day. */
-  guestDailySummariesPerIp: number;
-  memberDailySummaries: number;
-  /** Minutes of video the whole app may read per UTC day. */
-  dailyVideoMinutes: number;
-};
-
-export const DEFAULT_LIMITS: UsageLimits = {
-  guestDailySummaries: 3,
-  guestDailySummariesPerIp: 10,
-  memberDailySummaries: 10,
-  // Below the Summary engine's free 8 hours of YouTube a day.
-  dailyVideoMinutes: 360,
-};
 
 export type CoreDeps = {
   engine: SummaryEngine;
@@ -105,6 +94,24 @@ export type SummaryRequest = {
   language?: SummaryLanguage;
 };
 
+/** A video or recording longer than the requester may have summarized. */
+export type TooLongRejection = {
+  status: "rejected";
+  reason: "video-too-long";
+  limitMinutes: number;
+  /** Set when signing up as a Member would allow it. */
+  memberLimitMinutes?: number;
+};
+
+/** No new Summaries left today. */
+export type DailyLimitRejection = {
+  status: "rejected";
+  reason: "daily-limit-reached";
+  resetsAt: string;
+  /** Set for Guests: how many a Member gets instead. */
+  memberDailyLimit?: number;
+};
+
 export type SummaryRejection =
   | {
       status: "rejected";
@@ -118,20 +125,8 @@ export type SummaryRejection =
         | "upload-not-found"
         | "upload-not-supported";
     }
-  | {
-      status: "rejected";
-      reason: "video-too-long";
-      limitMinutes: number;
-      /** Set when signing up as a Member would allow this video. */
-      memberLimitMinutes?: number;
-    }
-  | {
-      status: "rejected";
-      reason: "daily-limit-reached";
-      resetsAt: string;
-      /** Set for Guests: how many a Member gets instead. */
-      memberDailyLimit?: number;
-    }
+  | TooLongRejection
+  | DailyLimitRejection
   | { status: "rejected"; reason: "app-capacity-reached"; resetsAt: string }
   | { status: "rejected"; reason: "text-too-long"; limitCharacters: number }
   | { status: "rejected"; reason: "pdf-too-long"; limitPages: number };
@@ -184,9 +179,6 @@ const SYNTHESIS_TIMEOUT_MS = 30_000;
 const CLAIM_WAIT_POLLS = 25;
 const CLAIM_WAIT_INTERVAL_MS = 1_000;
 
-/** How many History entries come back at a time. */
-const HISTORY_PAGE = 50;
-
 export type HistoryItem = {
   videoId: string;
   language: SummaryLanguage;
@@ -201,8 +193,8 @@ export type UploadStart =
   | { status: "ready"; uploadId: string; uploadUrl: string }
   | { status: "rejected"; reason: "upload-not-supported" }
   | { status: "rejected"; reason: "upload-too-large"; limitMb: number }
-  | { status: "rejected"; reason: "video-too-long"; limitMinutes: number; memberLimitMinutes?: number }
-  | { status: "rejected"; reason: "daily-limit-reached"; resetsAt: string; memberDailyLimit?: number };
+  | TooLongRejection
+  | DailyLimitRejection;
 
 /** Formats an Upload may start with: those `checkFile` finds for a kind TLDWatch summarizes. */
 const UPLOAD_TYPES = new Set(UPLOAD_MIME_TYPES);
@@ -261,18 +253,84 @@ export function createCore({
   uploads,
   clock,
   newId = () => globalThis.crypto.randomUUID(),
-  // Supabase Storage's largest file on the free plan; well within the engine's own limit.
-  uploadMaxMb = 50,
-  // Below ElevenLabs' free 10,000 credits a month.
-  naturalVoiceMonthlyCharacters = 8_000,
+  uploadMaxMb = UPLOAD_MAX_MB,
+  naturalVoiceMonthlyCharacters = NATURAL_VOICE_MONTHLY_CHARACTERS,
   limits = DEFAULT_LIMITS,
   // Reading plus translating must fit inside the route's 120 seconds.
   generationTimeoutMs = 85_000,
   translationTimeoutMs = 30_000,
   onFailure,
 }: CoreDeps) {
-  // Generations under way in this process, keyed by video ID. A request for a
-  // video already under way joins it, so the video is read at most once.
+  /** A new Upload's id: "upload-" and a random UUID (see isUploadId). */
+  const newUploadId = () => `upload-${newId()}`;
+
+  /**
+   * Runs `work` once per key in this process: asking again while it runs
+   * joins the first run, so the same video, translation or audio is never made twice at once.
+   */
+  function joinInFlight<T>(inFlight: Map<string, Promise<T>>, key: string, work: () => Promise<T>): Promise<T> {
+    let pending = inFlight.get(key);
+    if (!pending) {
+      pending = work().finally(() => inFlight.delete(key));
+      inFlight.set(key, pending);
+    }
+    return pending;
+  }
+
+  /** Refuses a request for want of Summaries today; a Guest hears what a Member gets. */
+  function dailyLimitReached(requester: Requester, resetsAt: string): DailyLimitRejection {
+    return {
+      status: "rejected",
+      reason: "daily-limit-reached",
+      resetsAt,
+      ...(requester.kind === "guest" && { memberDailyLimit: limits.memberDailySummaries }),
+    };
+  }
+
+  /**
+   * Refuses a video or recording too long for this requester. A Guest hears
+   * the Member limit when it would allow it (or when the length isn't known).
+   */
+  function tooLong(requester: Requester, durationSeconds?: number): TooLongRejection {
+    const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
+    const memberLimitMinutes = DURATION_LIMIT_MINUTES.member;
+    const membersCould =
+      requester.kind === "guest" && (durationSeconds === undefined || durationSeconds <= memberLimitMinutes * 60);
+    return { status: "rejected", reason: "video-too-long", limitMinutes, ...(membersCould && { memberLimitMinutes }) };
+  }
+
+  /** Adds a Summary to a Member's History (Guests have none). Never fails the request. */
+  async function rememberFor(requester: Requester, videoId: string, language: SummaryLanguage) {
+    if (requester.kind !== "member") return;
+    await remember(requester.memberId, videoId, language).catch((error) => onFailure?.(error, { videoId }));
+  }
+
+  /**
+   * Stores a new Upload Summary privately for its owner, shaped for its source
+   * (only video, audio and PDF pages have Timestamps), and puts it in a Member's History.
+   */
+  async function saveUploadSummary(
+    requester: Requester,
+    uploadId: string,
+    output: EngineOutput,
+    source: SummarySource,
+  ): Promise<Summary> {
+    const summary = await store.saveSummary({
+      videoId: uploadId,
+      language: SUMMARY_LANGUAGE,
+      spokenLanguage: output.spokenLanguage,
+      // Whatever the engine says, a text or an image has no moments to point to.
+      lengths: source === "text" || source === "image" ? withoutTimestamps(output.lengths) : output.lengths,
+      createdAt: clock.now().toISOString(),
+      ownerId: ownerKey(requester),
+      // A video is the default, and stays implicit.
+      ...(source !== "video" && { source }),
+    });
+    await rememberFor(requester, uploadId, summary.language);
+    return summary;
+  }
+
+  // Generations under way in this process, keyed by video ID, so a video is read at most once.
   const underWay = new Map<string, Promise<Generation>>();
 
   /** Reads the video and stores its Summary, unless someone else already did. */
@@ -282,15 +340,14 @@ export function createCore({
       // Another server may have stored it since this request looked.
       const existing = await store.findSummary(videoId, SUMMARY_LANGUAGE);
       if (existing) return { kind: "found", summary: existing };
-      let raw: unknown;
-      try {
-        raw = await withDeadline(engine.summarizeYouTubeVideo(videoId), generationTimeoutMs);
-        engineAnswered = true;
-      } catch (error) {
-        // A timed-out engine may still be reading; a refusing one read nothing.
-        engineAnswered = error instanceof DeadlineExceeded;
-        throw error;
-      }
+      const raw = await withDeadline(engine.summarizeYouTubeVideo(videoId), generationTimeoutMs).catch(
+        (error: unknown) => {
+          // A timed-out engine may still be reading; a refusing one read nothing.
+          engineAnswered = error instanceof DeadlineExceeded;
+          throw error;
+        },
+      );
+      engineAnswered = true;
       const output = engineOutputSchema.parse(raw);
       const summary = await store.saveSummary({
         videoId,
@@ -308,11 +365,8 @@ export function createCore({
 
   /** Joins the generation under way for this video, or starts one. */
   async function joinOrStart(videoId: string): Promise<{ generation: Generation; started: boolean }> {
-    const pending = underWay.get(videoId);
-    if (pending) return { generation: await pending, started: false };
-    const started = generate(videoId).finally(() => underWay.delete(videoId));
-    underWay.set(videoId, started);
-    return { generation: await started, started: true };
+    const started = !underWay.has(videoId);
+    return { generation: await joinInFlight(underWay, videoId, () => generate(videoId)), started };
   }
 
   /** Looks the video up; returns why this requester can't have it, or its duration. */
@@ -328,15 +382,8 @@ export function createCore({
     if (facts.broadcast !== "none") {
       return { rejection: { status: "rejected", reason: "video-not-finished" } };
     }
-    const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
-    if (facts.durationSeconds > limitMinutes * 60) {
-      const memberLimitMinutes = DURATION_LIMIT_MINUTES.member;
-      return {
-        rejection:
-          requester.kind === "guest" && facts.durationSeconds <= memberLimitMinutes * 60
-            ? { status: "rejected", reason: "video-too-long", limitMinutes, memberLimitMinutes }
-            : { status: "rejected", reason: "video-too-long", limitMinutes },
-      };
+    if (facts.durationSeconds > DURATION_LIMIT_MINUTES[requester.kind] * 60) {
+      return { rejection: tooLong(requester, facts.durationSeconds) };
     }
     return { durationSeconds: facts.durationSeconds };
   }
@@ -369,10 +416,10 @@ export function createCore({
     }
   }
 
-  /** Gives back what a request reserved. Never throws: a failure here is only logged. */
-  async function giveBackAll(reservations: Reservation[], day: string, videoId: string) {
+  /** Gives back what a request reserved in a period (a day or a month). Never throws: a failure is only logged. */
+  async function giveBackAll(reservations: Reservation[], period: string, videoId: string) {
     for (const r of reservations) {
-      await usage.giveBack(r.counter, day, r.amount).catch((error) => onFailure?.(error, { videoId }));
+      await usage.giveBack(r.counter, period, r.amount).catch((error) => onFailure?.(error, { videoId }));
     }
   }
 
@@ -382,12 +429,7 @@ export function createCore({
     language = "english",
   }: SummaryRequest): Promise<SummaryResult> {
     const result = await summaryIn(normalizeLanguage(language), videoUrl, requester);
-    if (result.status === "ready" && requester.kind === "member") {
-      const { videoId, language: shown } = result.summary;
-      await remember(requester.memberId, videoId, shown).catch((error) =>
-        onFailure?.(error, { videoId }),
-      );
-    }
+    if (result.status === "ready") await rememberFor(requester, result.summary.videoId, result.summary.language);
     return result;
   }
 
@@ -397,9 +439,8 @@ export function createCore({
     requester: Requester,
   ): Promise<SummaryResult> {
     // Another language: only the configured ones, and only for Members.
-    const target = language;
-    if (target !== "english" && target !== "original") {
-      if (!summaryLanguages.includes(target)) {
+    if (language !== "english" && language !== "original") {
+      if (!summaryLanguages.includes(language)) {
         return { status: "rejected", reason: "language-not-offered" };
       }
       if (requester.kind !== "member") {
@@ -408,8 +449,8 @@ export function createCore({
     }
 
     const english = await requestEnglishSummary(videoUrl, requester);
-    if (target === "english" || english.status !== "ready") return english;
-    const translated = await translateOnce(english.summary, target);
+    if (language === "english" || english.status !== "ready") return english;
+    const translated = await translateOnce(english.summary, language);
     // The English Summary is already made (and maybe counted): never throw it away.
     return translated
       ? { status: "ready", summary: translated }
@@ -430,13 +471,7 @@ export function createCore({
     if (language === "original" && isEnglish(english.spokenLanguage)) {
       return Promise.resolve(english);
     }
-    const key = `${english.videoId}:${language}`;
-    let pending = translating.get(key);
-    if (!pending) {
-      pending = translate(english, language).finally(() => translating.delete(key));
-      translating.set(key, pending);
-    }
-    return pending;
+    return joinInFlight(translating, `${english.videoId}:${language}`, () => translate(english, language));
   }
 
   /** Translates the stored English text. It never reads the video. */
@@ -489,14 +524,7 @@ export function createCore({
         const checked = await checkVideo(videoId, requester);
         if ("rejection" in checked) return checked.rejection;
 
-        if (!(await reserveAll(counters, day, videoId))) {
-          return {
-            status: "rejected",
-            reason: "daily-limit-reached",
-            resetsAt: nextUtcMidnight(now),
-            ...(requester.kind === "guest" && { memberDailyLimit: limits.memberDailySummaries }),
-          };
-        }
+        if (!(await reserveAll(counters, day, videoId))) return dailyLimitReached(requester, nextUtcMidnight(now));
         reserved = counters;
 
         const minutes: Reservation = {
@@ -633,7 +661,7 @@ export function createCore({
     memberId: string,
     { before }: { before?: string } = {},
   ): Promise<HistoryItem[]> {
-    const entries = await history.listHistory(memberId, HISTORY_PAGE, before);
+    const entries = await history.listHistory(memberId, HISTORY_PAGE_SIZE, before);
     // One batched read per language, plus English for anything whose language is gone.
     const languages = [...new Set(entries.map((e) => e.language))];
     const found = await Promise.all(
@@ -652,7 +680,9 @@ export function createCore({
         byLanguage.get("english")?.get(entry.videoId);
       if (!summary) {
         // Its Summary is gone: forget the entry rather than keep a dead link.
-        await history.removeEntry(memberId, entry.videoId).catch(() => {});
+        await history.removeEntry(memberId, entry.videoId).catch((error) =>
+          onFailure?.(error, { videoId: entry.videoId }),
+        );
         continue;
       }
       items.push({
@@ -708,15 +738,8 @@ export function createCore({
       naturalVoiceId && allowed.includes(naturalVoiceId) ? naturalVoiceId : allowed[0];
     // Voice and model are part of the key, so changing either never replays old audio.
     const key = `${videoId}/${language}/${length}/${voiceId}-${voice.model}.mp3`;
-    let pending = narrating.get(key);
-    if (!pending) {
-      const text = narrationScript(summary.lengths[length]).join(" ");
-      pending = narrate({ key, videoId, text, languageCode, voiceId }).finally(() =>
-        narrating.delete(key),
-      );
-      narrating.set(key, pending);
-    }
-    return pending;
+    const text = narrationScript(summary.lengths[length]).join(" ");
+    return joinInFlight(narrating, key, () => narrate({ key, videoId, text, languageCode, voiceId }));
   }
 
   async function narrate({
@@ -754,13 +777,13 @@ export function createCore({
       return { voice: "natural", audioUrl: await narrationAudio.saveAudio(key, mp3) };
     } catch (error) {
       onFailure?.(error, { videoId });
-      const giveBack = async (counter: string, amount: number) =>
-        usage.giveBack(counter, month, amount).catch((e) => onFailure?.(e, { videoId }));
+      const refunds: Reservation[] = [];
       // A timed-out voice service may still have spoken (and charged) it.
       if (characters && !(error instanceof DeadlineExceeded)) {
-        await giveBack(NATURAL_VOICE_CHARACTERS, characters);
+        refunds.push({ counter: NATURAL_VOICE_CHARACTERS, amount: characters, limit: naturalVoiceMonthlyCharacters });
       }
-      if (claimed) await giveBack(claim, 1);
+      if (claimed) refunds.push({ counter: claim, amount: 1, limit: 1 });
+      await giveBackAll(refunds, month, videoId);
       return { voice: "standard", reason: "natural-voice-unavailable" };
     }
   }
@@ -782,13 +805,6 @@ export function createCore({
     return { charactersLeft: Math.max(0, naturalVoiceMonthlyCharacters - used), resetsAt: nextUtcMonth(now) };
   }
 
-  /** A Guest is told how much more a Member could do; a Member, nothing extra. */
-  function memberHint(requester: Requester) {
-    return requester.kind === "guest"
-      ? { memberLimitMinutes: DURATION_LIMIT_MINUTES.member, memberDailyLimit: limits.memberDailySummaries }
-      : {};
-  }
-
   /**
    * Starts an Upload for a Member or a Guest: checks the file before anything
    * is sent, then gives a one-time URL in their own private folder to upload it to.
@@ -803,27 +819,13 @@ export function createCore({
     if (file.sizeBytes > uploadMaxMb * 1024 * 1024) {
       return { status: "rejected", reason: "upload-too-large", limitMb: uploadMaxMb };
     }
-    const hint = memberHint(requester);
-    const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
-    if (file.durationSeconds > limitMinutes * 60) {
-      return {
-        status: "rejected",
-        reason: "video-too-long",
-        limitMinutes,
-        ...(hint.memberLimitMinutes && { memberLimitMinutes: hint.memberLimitMinutes }),
-      };
+    if (file.durationSeconds > DURATION_LIMIT_MINUTES[requester.kind] * 60) {
+      return tooLong(requester, file.durationSeconds);
     }
-    // Say so now, not after they've waited for a 50 MB upload.
+    // Say so now, not after they've waited for a large upload.
     const left = await summariesLeftToday(requester);
-    if (left.left === 0) {
-      return {
-        status: "rejected",
-        reason: "daily-limit-reached",
-        resetsAt: left.resetsAt,
-        ...(hint.memberDailyLimit && { memberDailyLimit: hint.memberDailyLimit }),
-      };
-    }
-    const uploadId = `upload-${newId()}`;
+    if (left.left === 0) return dailyLimitReached(requester, left.resetsAt);
+    const uploadId = newUploadId();
     const uploadUrl = await uploads.createUploadUrl(uploadPath(ownerKey(requester), uploadId));
     return { status: "ready", uploadId, uploadUrl };
   }
@@ -838,12 +840,7 @@ export function createCore({
   function summarizeUpload(requester: Requester, uploadId: string): Promise<SummaryResult> {
     if (!isUploadId(uploadId)) return Promise.resolve({ status: "rejected", reason: "upload-not-found" });
     const path = uploadPath(ownerKey(requester), uploadId);
-    let pending = summarizingUploads.get(path);
-    if (!pending) {
-      pending = summarizeUploadOnce(requester, uploadId, path).finally(() => summarizingUploads.delete(path));
-      summarizingUploads.set(path, pending);
-    }
-    return pending;
+    return joinInFlight(summarizingUploads, path, () => summarizeUploadOnce(requester, uploadId, path));
   }
 
   async function summarizeUploadOnce(
@@ -851,7 +848,6 @@ export function createCore({
     uploadId: string,
     path: string,
   ): Promise<SummaryResult> {
-    const owner = ownerKey(requester);
     const now = clock.now();
     const day = utcDay(now);
     const counters = summaryCounters(requester);
@@ -859,13 +855,13 @@ export function createCore({
     try {
       // Already summarized (the same URL used again): give that back, uncounted.
       const existing = await store.findSummary(uploadId, SUMMARY_LANGUAGE);
-      if (existing?.ownerId === owner) return { status: "ready", summary: existing };
+      if (existing?.ownerId === ownerKey(requester)) return { status: "ready", summary: existing };
 
       const stored = await uploads.read(path);
       if (!stored) return { status: "rejected", reason: "upload-not-found" };
       // The browser checked it, but the server never takes its word: judge the bytes again.
       const check = checkFile({ name: "", head: stored.bytes.subarray(0, FILE_HEAD_BYTES) });
-      if (!check.ok || !UPLOADABLE_KINDS.has(check.kind)) {
+      if (!check.ok || !isUploadable(check.kind)) {
         return { status: "rejected", reason: "upload-not-supported" };
       }
       // A file declared as one kind whose bytes are another is a disguise (or a mistake): refuse it.
@@ -874,53 +870,23 @@ export function createCore({
         return { status: "rejected", reason: "upload-not-supported" };
       }
       const file = { bytes: stored.bytes, mimeType: check.mimeType };
-      const kind = check.kind as UploadKind;
+      const kind = check.kind;
       if (kind === "pdf" && (pdfPageCount(file.bytes) ?? 0) > PDF_MAX_PAGES) {
         return { status: "rejected", reason: "pdf-too-long", limitPages: PDF_MAX_PAGES };
       }
 
-      const hint = memberHint(requester);
-      if (!(await reserveAll(counters, day, uploadId))) {
-        return {
-          status: "rejected",
-          reason: "daily-limit-reached",
-          resetsAt: nextUtcMidnight(now),
-          ...(hint.memberDailyLimit && { memberDailyLimit: hint.memberDailyLimit }),
-        };
-      }
+      if (!(await reserveAll(counters, day, uploadId))) return dailyLimitReached(requester, nextUtcMidnight(now));
       reserved = true;
 
-      const limitMinutes = DURATION_LIMIT_MINUTES[requester.kind];
-      const read = await withDeadline(engine.summarizeFile(file, kind, limitMinutes * 60), UPLOAD_TIMEOUT_MS);
+      const maxSeconds = DURATION_LIMIT_MINUTES[requester.kind] * 60;
+      const read = await withDeadline(engine.summarizeFile(file, kind, maxSeconds), UPLOAD_TIMEOUT_MS);
       if (read.kind === "too-long") {
         await giveBackAll(counters, day, uploadId);
         reserved = false;
-        return {
-          status: "rejected",
-          reason: "video-too-long",
-          limitMinutes,
-          ...(hint.memberLimitMinutes && { memberLimitMinutes: hint.memberLimitMinutes }),
-        };
+        return tooLong(requester);
       }
       const output = engineOutputSchema.parse(read.output);
-      const summary = await store.saveSummary({
-        videoId: uploadId,
-        language: SUMMARY_LANGUAGE,
-        spokenLanguage: output.spokenLanguage,
-        // An image has no timeline (a PDF's "Timestamps" are its pages).
-        lengths: kind === "image" ? withoutTimestamps(output.lengths) : output.lengths,
-        createdAt: clock.now().toISOString(),
-        ownerId: owner,
-        // A video is the default, and stays implicit.
-        ...(kind !== "video" && { source: kind }),
-      });
-      // Only Members have a History.
-      if (requester.kind === "member") {
-        await remember(requester.memberId, uploadId, summary.language).catch((error) =>
-          onFailure?.(error, { videoId: uploadId }),
-        );
-      }
-      return { status: "ready", summary };
+      return { status: "ready", summary: await saveUploadSummary(requester, uploadId, output, kind) };
     } catch (error) {
       onFailure?.(error, { videoId: uploadId });
       if (reserved) await giveBackAll(counters, day, uploadId);
@@ -960,39 +926,14 @@ export function createCore({
     if (text.length > LONG_TEXT_MAX_CHARACTERS) {
       return { status: "rejected", reason: "text-too-long", limitCharacters: LONG_TEXT_MAX_CHARACTERS };
     }
-    const uploadId = `upload-${newId()}`;
+    const uploadId = newUploadId();
     const now = clock.now();
     const day = utcDay(now);
     const counters = summaryCounters(requester);
-    if (!(await reserveAll(counters, day, uploadId))) {
-      const hint = memberHint(requester);
-      return {
-        status: "rejected",
-        reason: "daily-limit-reached",
-        resetsAt: nextUtcMidnight(now),
-        ...(hint.memberDailyLimit && { memberDailyLimit: hint.memberDailyLimit }),
-      };
-    }
+    if (!(await reserveAll(counters, day, uploadId))) return dailyLimitReached(requester, nextUtcMidnight(now));
     try {
-      const output = engineOutputSchema.parse(
-        await withDeadline(engine.summarizeText(text), generationTimeoutMs),
-      );
-      const summary = await store.saveSummary({
-        videoId: uploadId,
-        language: SUMMARY_LANGUAGE,
-        spokenLanguage: output.spokenLanguage,
-        // A text has no moments to jump to, whatever the engine says.
-        lengths: withoutTimestamps(output.lengths),
-        createdAt: clock.now().toISOString(),
-        ownerId: ownerKey(requester),
-        source: "text",
-      });
-      if (requester.kind === "member") {
-        await remember(requester.memberId, uploadId, summary.language).catch((error) =>
-          onFailure?.(error, { videoId: uploadId }),
-        );
-      }
-      return { status: "ready", summary };
+      const output = engineOutputSchema.parse(await withDeadline(engine.summarizeText(text), generationTimeoutMs));
+      return { status: "ready", summary: await saveUploadSummary(requester, uploadId, output, "text") };
     } catch (error) {
       onFailure?.(error, { videoId: uploadId });
       await giveBackAll(counters, day, uploadId);

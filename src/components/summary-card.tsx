@@ -15,13 +15,12 @@ import { namesOf, type LanguageNames } from "@/lib/language-names";
 import { useMe } from "@/lib/me";
 import { NarrationPlayer } from "@/components/narration-player";
 import { SummaryView, type LanguageProblem } from "@/components/summary-view";
+import { getJson, postJson } from "@/lib/json-fetch";
 
 // The other languages on offer, fetched once per page and shared by every card.
 let languagesRequest: Promise<string[]> | null = null;
 function loadSummaryLanguages(): Promise<string[]> {
-  languagesRequest ??= fetch("/api/summary-languages")
-    .then((r) => (r.ok ? (r.json() as Promise<string[]>) : []))
-    .catch(() => []);
+  languagesRequest ??= getJson<string[]>("/api/summary-languages", []);
   return languagesRequest;
 }
 
@@ -59,11 +58,7 @@ export function SummaryCard({
   // Requests made from the homepage record themselves; a share link doesn't.
   useEffect(() => {
     if (!recordOpen) return;
-    fetch("/api/history/opened", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId: initial.videoId, language: initial.language }),
-    }).catch(() => {});
+    void postJson("/api/history/opened", { videoId: initial.videoId, language: initial.language }, null);
   }, [recordOpen, initial.videoId, initial.language]);
   const [language, setLanguage] = useState<SummaryLanguage>(
     translationFailed ? "original" : initial.language,

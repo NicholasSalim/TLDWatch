@@ -12,10 +12,17 @@ export type Requester =
  * counts for a Guest, never the network, so Guests sharing one never share.
  */
 export function ownerKey(requester: Requester): string {
-  return requester.kind === "member" ? requester.memberId : `guest-${requester.guestId}`;
+  return requester.kind === "member" ? requester.memberId : guestOwnerKey(requester.guestId);
 }
 
-/** Whether an owner key belongs to a Guest. */
-export function isGuestOwner(owner: string): boolean {
-  return owner.startsWith("guest-");
+const GUEST_PREFIX = "guest-";
+
+/** The owner key of a Guest's Upload. */
+export function guestOwnerKey(guestId: string): string {
+  return GUEST_PREFIX + guestId;
+}
+
+/** The Guest's cookie id behind an owner key, or null if a Member owns it. */
+export function guestIdOf(owner: string): string | null {
+  return owner.startsWith(GUEST_PREFIX) ? owner.slice(GUEST_PREFIX.length) : null;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCore, type UsageLimits } from "./core";
+import { createCore } from "./core";
+import type { UsageLimits } from "./limits";
 import type { Requester } from "./requester";
 import {
   ControllableClock,

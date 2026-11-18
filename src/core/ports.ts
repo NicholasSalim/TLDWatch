@@ -2,7 +2,7 @@
  * The adapters the core depends on. Production wires in the real services;
  * tests swap in the fakes from `./testing`.
  */
-import type { Length, LengthContent, Summary, SummaryLanguage } from "./summary";
+import type { Length, LengthContent, Summary, SummaryLanguage, UploadKind } from "./summary";
 
 export interface SummaryEngine {
   /**
@@ -34,8 +34,6 @@ export interface SummaryEngine {
 /** An uploaded file, as the engine reads it: its bytes and its real type. */
 export type UploadedFile = { bytes: Uint8Array; mimeType: string };
 
-/** The kinds of file an Upload can be; text is sent as text, never stored. */
-export type UploadKind = "video" | "audio" | "pdf" | "image";
 
 /**
  * Private storage for Uploads while they're summarized. A path is
@@ -66,7 +64,7 @@ export interface SummaryStore {
   /** Deletes every Summary an owner (see ownerKey) has: their Uploads, in every language. */
   deleteOwnedBy(ownerId: string): Promise<void>;
   /**
-   * Deletes every Upload owned by a Guest (an owner starting "guest-") whose
+   * Deletes every Upload owned by a Guest (see guestIdOf) whose
    * first Summary was made before `cutoff` (an ISO time), in every language.
    * Returns how many Uploads went.
    */

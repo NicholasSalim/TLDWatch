@@ -3,9 +3,9 @@
  * (see supabase/migrations). Server-side only, with the service role key.
  */
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SummaryStore } from "@/core/ports";
-import { isGuestOwner } from "@/core/requester";
+import { guestIdOf, guestOwnerKey } from "@/core/requester";
 import type { Summary } from "@/core/summary";
 
 type SummaryRow = {
@@ -20,7 +20,6 @@ type SummaryRow = {
 };
 
 const COLUMNS = "video_id, language, spoken_language, lengths, created_at, owner_id, guest_owner_id, source";
-const GUEST_PREFIX = "guest-";
 
 const fromRow = (row: SummaryRow): Summary => ({
   videoId: row.video_id,
@@ -30,7 +29,7 @@ const fromRow = (row: SummaryRow): Summary => ({
   createdAt: row.created_at,
   // The core knows one owner key; the table keeps Members and Guests apart.
   ...(row.owner_id && { ownerId: row.owner_id }),
-  ...(row.guest_owner_id && { ownerId: GUEST_PREFIX + row.guest_owner_id }),
+  ...(row.guest_owner_id && { ownerId: guestOwnerKey(row.guest_owner_id) }),
   // A video is the default, and stays implicit.
   ...(row.source !== "video" && { source: row.source }),
 });
@@ -38,21 +37,13 @@ const fromRow = (row: SummaryRow): Summary => ({
 /** An owner key as the two owner columns. */
 function ownerColumns(ownerId: string | undefined) {
   if (!ownerId) return { owner_id: null, guest_owner_id: null };
-  return isGuestOwner(ownerId)
-    ? { owner_id: null, guest_owner_id: ownerId.slice(GUEST_PREFIX.length) }
+  const guestId = guestIdOf(ownerId);
+  return guestId !== null
+    ? { owner_id: null, guest_owner_id: guestId }
     : { owner_id: ownerId, guest_owner_id: null };
 }
 
-export function createSupabaseSummaryStore({
-  url,
-  serviceRoleKey,
-}: {
-  url: string;
-  serviceRoleKey: string;
-}): SummaryStore {
-  const db = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+export function createSupabaseSummaryStore(db: SupabaseClient): SummaryStore {
 
   async function findSummary(videoId: string, language: Summary["language"]) {
     const { data, error } = await db

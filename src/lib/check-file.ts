@@ -1,10 +1,10 @@
-import { checkFile, FILE_HEAD_BYTES, type FileKind } from "@/core/file-kind";
+import { checkFile, FILE_HEAD_BYTES } from "@/core/file-kind";
+import { UPLOAD_MAX_MB } from "@/core/limits";
+import type { SummarySource } from "@/core/summary";
 
-/** The largest file the browser lets through; the server checks again with its own limit. */
-export const UPLOAD_MAX_MB = 50;
 
 /** What can be uploaded, as the paperclip menu lists it. */
-export const UPLOAD_KINDS: { kind: FileKind; label: string; formats: string; accept: string }[] = [
+export const UPLOAD_KINDS: { kind: SummarySource; label: string; formats: string; accept: string }[] = [
   {
     kind: "video",
     label: "Video",
@@ -22,7 +22,7 @@ export const UPLOAD_KINDS: { kind: FileKind; label: string; formats: string; acc
   { kind: "text", label: "Text file", formats: "TXT, Markdown, CSV", accept: ".txt,.md,.markdown,.csv" },
 ];
 
-export const KIND_NAMES: Record<FileKind, string> = {
+export const KIND_NAMES: Record<SummarySource, string> = {
   video: "video",
   audio: "audio file",
   pdf: "PDF",
@@ -31,7 +31,7 @@ export const KIND_NAMES: Record<FileKind, string> = {
 };
 
 export type Inspection =
-  | { ok: true; kind: FileKind; mimeType: string }
+  | { ok: true; kind: SummarySource; mimeType: string }
   | { ok: false; message: string };
 
 /**

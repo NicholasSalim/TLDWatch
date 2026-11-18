@@ -4,11 +4,11 @@
  */
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Requester } from "@/core/requester";
 import { getCore } from "@/server/core";
 import { guestFrom } from "@/server/guest-identity";
+import { supabaseAdmin } from "@/server/supabase-admin";
 
 export async function authClient() {
   const url = process.env.SUPABASE_URL;
@@ -74,10 +74,6 @@ export function isSameOrigin(request: Request): boolean {
  * deleted their account.
  */
 export async function forgetAuthUser(userId: string): Promise<void> {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await admin.auth.admin.deleteUser(userId);
+  const { error } = await supabaseAdmin().auth.admin.deleteUser(userId);
   if (error) throw error;
 }

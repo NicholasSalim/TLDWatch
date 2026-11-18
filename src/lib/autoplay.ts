@@ -1,43 +1,21 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { updateMember, useMe } from "@/lib/me";
-import { readPreference, writePreference } from "@/lib/preferences";
+import { usePreference, writePreference } from "@/lib/preferences";
+import { postJson } from "@/lib/json-fetch";
 
 /**
  * The "Autoplay Narration" setting. Off by default. A Member's setting is
  * saved to their account; a Guest's lives in this browser's localStorage.
  */
 
-const listeners = new Set<() => void>();
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", listener);
-  };
-}
-
-const readLocal = () => readPreference("autoplay") === "on";
-
-function writeLocal(on: boolean) {
-  writePreference("autoplay", on ? "on" : "off");
-  listeners.forEach((listener) => listener());
-}
+const writeLocal = (on: boolean) => writePreference("autoplay", on ? "on" : "off");
 
 function saveToAccount(on: boolean) {
   updateMember({ autoplay: on });
-  fetch("/api/me/autoplay", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ on }),
-  })
-    .then((response) => {
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    })
-    .catch(() => updateMember({ autoplay: !on })); // Not saved: show the truth again.
+  void postJson<{ autoplay: boolean } | null>("/api/me/autoplay", { on }, null, "PUT").then((saved) => {
+    if (!saved) updateMember({ autoplay: !on }); // Not saved: show the truth again.
+  });
 }
 
 const ignore = () => {};
@@ -47,7 +25,7 @@ const ignore = () => {};
  * Member's account setting is never overridden by this browser's.
  */
 export function useAutoplay(): [boolean, (on: boolean) => void] {
-  const local = useSyncExternalStore(subscribe, readLocal, () => false);
+  const local = usePreference("autoplay") === "on";
   const me = useMe();
   if (!me) return [false, ignore];
   return me.member ? [me.member.autoplay, saveToAccount] : [local, writeLocal];

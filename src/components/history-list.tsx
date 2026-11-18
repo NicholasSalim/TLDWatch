@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X } from "lucide-react";
 import type { HistoryItem } from "@/core/core";
-import type { SummarySource } from "@/core/summary";
-import { SOURCE_ICONS } from "@/components/summary-view";
+import { HISTORY_PAGE_SIZE } from "@/core/limits";
+import { Thumbnail } from "@/components/summary-view";
 import { summaryPath } from "@/core/share";
-import { isUploadId } from "@/core/upload-id";
 import { openSignIn, useMe } from "@/lib/me";
 
 type State =
@@ -15,9 +14,7 @@ type State =
   | { kind: "ready"; items: HistoryItem[]; more: boolean }
   | { kind: "failed" };
 
-/** The server sends this many at a time; a full page means there may be more. */
-const PAGE = 50;
-
+/** One page of History (HISTORY_PAGE_SIZE entries); a full page means there may be more. */
 async function fetchHistory(before?: string): Promise<HistoryItem[]> {
   const query = before ? `?before=${encodeURIComponent(before)}` : "";
   const response = await fetch(`/api/history${query}`, { cache: "no-store" });
@@ -38,7 +35,7 @@ export function HistoryList() {
       .then(
         (items) =>
           !cancelled &&
-          setState({ kind: "ready", items, more: items.length >= PAGE }),
+          setState({ kind: "ready", items, more: items.length >= HISTORY_PAGE_SIZE }),
       )
       .catch(() => !cancelled && setState({ kind: "failed" }));
     return () => {
@@ -58,7 +55,7 @@ export function HistoryList() {
           ? {
               kind: "ready",
               items: [...s.items, ...older],
-              more: older.length >= PAGE,
+              more: older.length >= HISTORY_PAGE_SIZE,
             }
           : s,
       );
@@ -133,19 +130,7 @@ export function HistoryList() {
             key={item.videoId}
             className="group relative flex items-center gap-3 rounded-2xl border border-white/10 bg-white/4 p-3 transition-colors hover:bg-white/6"
           >
-            {isUploadId(item.videoId) ? (
-              // An Upload has no thumbnail online.
-              <UploadIcon source={item.source} />
-            ) : (
-              // eslint-disable-next-line @next/next/no-img-element -- static YouTube thumbnail
-              <img
-                src={`https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`}
-                alt=""
-                width={112}
-                height={63}
-                className="aspect-video w-24 shrink-0 rounded-lg object-cover sm:w-28"
-              />
-            )}
+            <Thumbnail videoId={item.videoId} source={item.source} className="w-24 sm:w-28" />
             <div className="min-w-0 flex-1">
               <Link
                 href={summaryPath(item.videoId, item.language)}
@@ -215,19 +200,6 @@ function Skeleton() {
           className="h-22 animate-pulse rounded-2xl border border-white/10 bg-white/4"
         />
       ))}
-    </div>
-  );
-}
-
-/** An Upload has no thumbnail online: an icon for its kind stands in. */
-function UploadIcon({ source = "video" }: { source?: SummarySource }) {
-  const Icon = SOURCE_ICONS[source];
-  return (
-    <div
-      aria-hidden
-      className="grid aspect-video w-24 shrink-0 place-items-center rounded-lg bg-white/8 text-haze sm:w-28"
-    >
-      <Icon className="size-5" />
     </div>
   );
 }

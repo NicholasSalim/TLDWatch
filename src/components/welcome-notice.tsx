@@ -1,33 +1,20 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useMe } from "@/lib/me";
-import { readPreference, writePreference } from "@/lib/preferences";
-
-const listeners = new Set<() => void>();
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
-// Remembered here too, so "Got it" works even where storage is blocked.
-let dismissedThisPage = false;
-const seen = () => dismissedThisPage || readPreference("welcome-notice") === "seen";
+import { usePreference, writePreference } from "@/lib/preferences";
 
 /**
  * A Guest's first visit: TLDWatch is for adults, and videos go to third-party
  * AI services. Shown once per browser; Members already agreed at sign-up.
  */
 export function WelcomeNotice() {
-  const dismissed = useSyncExternalStore(subscribe, seen, () => true);
+  // The server renders it as seen, so it never flashes before the browser knows.
+  const dismissed = usePreference("welcome-notice", "seen") === "seen";
   const me = useMe();
   if (dismissed || !me || me.member) return null;
 
-  const dismiss = () => {
-    dismissedThisPage = true;
-    writePreference("welcome-notice", "seen");
-    listeners.forEach((listener) => listener());
-  };
+  const dismiss = () => writePreference("welcome-notice", "seen");
 
   return (
     <div

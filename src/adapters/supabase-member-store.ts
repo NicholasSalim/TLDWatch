@@ -3,7 +3,7 @@
  * (see supabase/migrations). Server-side only, with the service role key.
  */
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Member, MemberStore } from "@/core/ports";
 
 type MemberRow = { id: string; adult_confirmed_at: string; autoplay: boolean };
@@ -14,16 +14,7 @@ const fromRow = (row: MemberRow): Member => ({
   autoplay: row.autoplay,
 });
 
-export function createSupabaseMemberStore({
-  url,
-  serviceRoleKey,
-}: {
-  url: string;
-  serviceRoleKey: string;
-}): MemberStore {
-  const db = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+export function createSupabaseMemberStore(db: SupabaseClient): MemberStore {
 
   async function findMember(id: string) {
     const { data, error } = await db

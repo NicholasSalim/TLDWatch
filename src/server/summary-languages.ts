@@ -1,4 +1,5 @@
 import "server-only";
+import { baseLanguage } from "@/core/summary";
 
 /**
  * The other languages Members can read a Summary in, from SUMMARY_LANGUAGES
@@ -7,7 +8,7 @@ import "server-only";
 export function summaryLanguagesFromEnv(): string[] {
   const codes = (process.env.SUMMARY_LANGUAGES ?? "")
     .split(",")
-    .map((code) => code.trim().toLowerCase().split("-")[0])
+    .map((code) => baseLanguage(code.trim()))
     .filter((code) => /^[a-z]{2,3}$/.test(code) && code !== "en");
   return [...new Set(codes)];
 }

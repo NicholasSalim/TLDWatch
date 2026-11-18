@@ -6,19 +6,24 @@
  * a script (SVG, HTML), run (programs), or hide something (archives, Office
  * files) is refused.
  */
+import type { SummarySource, UploadKind } from "./summary";
 import { parseVideoUrl } from "./video-url";
 
-export type FileKind = "video" | "audio" | "pdf" | "image" | "text";
 
 export type FileCheck =
-  | { ok: true; kind: FileKind; mimeType: string }
+  | { ok: true; kind: SummarySource; mimeType: string }
   | { ok: false; reason: "unsupported" | "mismatch" };
 
 /**
  * The kinds that are uploaded as files. A text file isn't: the browser reads
  * it and sends it like a pasted text, so it never reaches Storage.
  */
-export const UPLOADABLE_KINDS: ReadonlySet<FileKind> = new Set<FileKind>(["video", "audio", "pdf", "image"]);
+export const UPLOADABLE_KINDS: ReadonlySet<SummarySource> = new Set<SummarySource>(["video", "audio", "pdf", "image"]);
+
+/** Whether a kind is uploaded as a file (see UPLOADABLE_KINDS). */
+export function isUploadable(kind: SummarySource): kind is UploadKind {
+  return UPLOADABLE_KINDS.has(kind);
+}
 
 /** Every type `checkFile` can find for an uploadable kind. */
 export const UPLOAD_MIME_TYPES = [
@@ -68,7 +73,7 @@ export const LONG_TEXT_MAX_CHARACTERS = 100_000;
 const LINK_MAX_CHARACTERS = 300;
 
 /** Extensions TLDWatch knows, and the kind each one promises. */
-const EXTENSION_KINDS: Record<string, FileKind> = {
+const EXTENSION_KINDS: Record<string, SummarySource> = {
   mp4: "video",
   m4v: "video",
   mov: "video",
@@ -143,7 +148,7 @@ export function judgeText(input: string): TextJudgement {
   return { kind: "text", characters: text.length };
 }
 
-function sniff(head: Uint8Array): { kind: FileKind; mimeType: string } | null {
+function sniff(head: Uint8Array): { kind: SummarySource; mimeType: string } | null {
   const at = (offset: number, text: string) =>
     [...text].every((char, i) => head[offset + i] === char.charCodeAt(0));
   const bytesAt = (offset: number, values: number[]) => values.every((v, i) => head[offset + i] === v);
@@ -219,7 +224,7 @@ const MP4_BRANDS = new Set([
 ]);
 
 /** The kind a declared type (such as "image/png") promises, or null if it promises none. */
-export function kindOfMimeType(mimeType: string): FileKind | null {
+export function kindOfMimeType(mimeType: string): SummarySource | null {
   const type = mimeType.toLowerCase();
   if (type.startsWith("video/")) return "video";
   if (type.startsWith("audio/")) return "audio";

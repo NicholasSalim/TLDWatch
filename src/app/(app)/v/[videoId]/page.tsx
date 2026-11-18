@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { SummaryCard } from "@/components/summary-card";
 import { namesOf } from "@/lib/language-names";
 import { isVideoId } from "@/core/video-url";
-import { parseSummaryLanguage } from "@/lib/summary-language";
+import { normalizeLanguage } from "@/core/summary";
 import { getCore } from "@/server/core";
 
 export async function generateMetadata({
@@ -43,7 +43,7 @@ async function SummaryFromLink({
 }: Pick<PageProps<"/v/[videoId]">, "params" | "searchParams">) {
   const { videoId } = await params;
   const { lang } = await searchParams;
-  const language = parseSummaryLanguage(lang);
+  const language = normalizeLanguage(lang);
   // A link in another language still opens if only the English Summary exists.
   const summary =
     (await getCore().readSharedSummary(videoId, language)) ??

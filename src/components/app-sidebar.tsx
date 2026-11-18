@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -18,34 +18,25 @@ import {
 import type { HistoryItem } from "@/core/core";
 import { summaryPath } from "@/core/share";
 import { openSignIn, useMe } from "@/lib/me";
-import { readPreference, writePreference } from "@/lib/preferences";
+import { usePreference, writePreference } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 import { Wordmark } from "@/components/wordmark";
+import { getJson } from "@/lib/json-fetch";
 
 const ITEM =
   "flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-lumen";
 
 // Desktop collapse is a per-browser preference.
-const collapseListeners = new Set<() => void>();
-const subscribeCollapse = (listener: () => void) => {
-  collapseListeners.add(listener);
-  return () => collapseListeners.delete(listener);
-};
-const readCollapsed = () => readPreference("sidebar") === "collapsed";
-function setCollapsed(collapsed: boolean) {
-  writePreference("sidebar", collapsed ? "collapsed" : "open");
-  collapseListeners.forEach((listener) => listener());
-}
+const setCollapsed = (collapsed: boolean) => writePreference("sidebar", collapsed ? "collapsed" : "open");
 
 /**
  * The app's navigation: a left sidebar on desktop (collapsible to icons), a
  * top bar with a drawer on phones. Home, History, and the profile at the bottom.
  */
 export function AppSidebar() {
-  const collapsed = useSyncExternalStore(subscribeCollapse, readCollapsed, () => false);
+  const collapsed = usePreference("sidebar") === "collapsed";
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Escape closes the drawer.
   useEffect(() => {
     if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawerOpen(false);
@@ -246,10 +237,9 @@ function RecentHistory({ pathname, onNavigate }: { pathname: string | null; onNa
   // Refreshed on every page change, so a Summary just opened shows up.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/history", { cache: "no-store" })
-      .then((r) => (r.ok ? (r.json() as Promise<HistoryItem[]>) : []))
-      .then((list) => !cancelled && setItems(list.slice(0, 8)))
-      .catch(() => !cancelled && setItems([]));
+    void getJson<HistoryItem[]>("/api/history", [], { cache: "no-store" }).then(
+      (list) => !cancelled && setItems(list.slice(0, 8)),
+    );
     return () => {
       cancelled = true;
     };
