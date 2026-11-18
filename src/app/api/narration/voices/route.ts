@@ -1,4 +1,6 @@
+import { LANGUAGE_CODE } from "@/core/summary";
 import { naturalVoiceList } from "@/server/natural-voices";
+import { orUnavailable } from "@/server/http";
 
 /**
  * The Natural voices Members can choose from for a language, in order, with
@@ -6,13 +8,11 @@ import { naturalVoiceList } from "@/server/natural-voices";
  */
 export async function GET(request: Request) {
   const lang = new URL(request.url).searchParams.get("lang") ?? "en";
-  if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(lang)) return Response.json([], { status: 400 });
-  try {
-    return Response.json(await naturalVoiceList(lang), {
-      headers: { "Cache-Control": "public, max-age=3600" },
-    });
-  } catch (error) {
-    console.error("Couldn't list the Natural voices", error);
-    return Response.json([], { status: 503 });
-  }
+  if (!LANGUAGE_CODE.test(lang)) return Response.json([], { status: 400 });
+  return orUnavailable(
+    "Couldn't list the Natural voices",
+    async () =>
+      Response.json(await naturalVoiceList(lang), { headers: { "Cache-Control": "public, max-age=3600" } }),
+    { fallback: [] },
+  );
 }

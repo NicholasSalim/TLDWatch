@@ -5,6 +5,7 @@
  */
 import "server-only";
 import type { NaturalVoice } from "@/core/ports";
+import { baseLanguage } from "@/core/summary";
 
 const API = "https://api.elevenlabs.io/v1";
 
@@ -34,7 +35,7 @@ export function createElevenLabsNaturalVoice({
           text,
           model_id: model,
           // ISO 639-1, e.g. "ko" from "ko-KR": tells the model which language to speak.
-          ...(takesLanguageCode && { language_code: languageCode.toLowerCase().split("-")[0] }),
+          ...(takesLanguageCode && { language_code: baseLanguage(languageCode) }),
         }),
         // Inside the core's 30-second deadline.
         signal: AbortSignal.timeout(28_000),

@@ -9,6 +9,7 @@
  */
 import "server-only";
 import { fetchVoiceDetails, type VoiceDetails } from "@/adapters/elevenlabs-natural-voice";
+import { baseLanguage } from "@/core/summary";
 
 /** Ready-made ElevenLabs voices anyone can use, with names in case the API can't be asked. */
 const DEFAULT_VOICES: VoiceDetails[] = [
@@ -40,7 +41,7 @@ export function naturalVoiceSettings(): {
   const byLanguage = voicesByLanguage();
   return {
     voicesFor: (languageCode) =>
-      byLanguage[languageCode.toLowerCase().split("-")[0]] ?? byLanguage["*"] ?? DEFAULT_IDS,
+      byLanguage[baseLanguage(languageCode)] ?? byLanguage["*"] ?? DEFAULT_IDS,
     model: process.env.ELEVENLABS_MODEL || "eleven_flash_v2_5",
   };
 }

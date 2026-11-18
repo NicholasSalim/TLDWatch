@@ -32,12 +32,15 @@ const lengthContentSchema = z.object({
   verdict: verdictSchema,
 });
 
+/** A BCP-47 language code as TLDWatch accepts it: "en", "pt-BR", "zh-Hant". */
+export const LANGUAGE_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
 export const engineOutputSchema = z.object({
   /** BCP-47 code of the language spoken in the video, e.g. "en" or "pt-BR". */
   spokenLanguage: z
     .string()
     .max(35)
-    .regex(/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/),
+    .regex(LANGUAGE_CODE),
   lengths: z.object({
     short: lengthContentSchema,
     medium: lengthContentSchema,
@@ -46,6 +49,9 @@ export const engineOutputSchema = z.object({
 });
 
 export type LengthContent = z.infer<typeof lengthContentSchema>;
+
+/** The Summary engine's output once it has passed `engineOutputSchema`. */
+export type EngineOutput = z.infer<typeof engineOutputSchema>;
 
 /**
  * English, the language the video is spoken in ("original"), or another
@@ -61,12 +67,14 @@ export function textLanguageOf(summary: { language: SummaryLanguage; spokenLangu
 }
 
 /**
- * Any language value made safe: "english", "original", or a valid base code
- * ("id" from "id-ID"). English as a code, and anything unrecognisable, is "english".
+ * Any language value made safe, from a request or anywhere else: "english",
+ * "original", or a valid base code ("id" from "id-ID"). English as a code,
+ * and anything unrecognisable, is "english". The core decides whether a code
+ * is offered, and to whom.
  */
-export function normalizeLanguage(language: string): SummaryLanguage {
+export function normalizeLanguage(language: unknown): SummaryLanguage {
   if (language === "english" || language === "original") return language;
-  if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language)) return "english";
+  if (typeof language !== "string" || !LANGUAGE_CODE.test(language)) return "english";
   const base = baseLanguage(language);
   return base === "en" ? "english" : base;
 }
@@ -78,7 +86,7 @@ export function baseLanguage(code: string): string {
 
 /** Whether a BCP-47 language code is English ("en", "en-GB", ...). */
 export function isEnglish(languageCode: string): boolean {
-  return languageCode.toLowerCase().split("-")[0] === "en";
+  return baseLanguage(languageCode) === "en";
 }
 
 /**
@@ -113,5 +121,11 @@ export type Summary = {
   source?: SummarySource;
 };
 
-/** What a Summary was made from. It decides its shape: only video and audio have Timestamps. */
+/**
+ * What a Summary was made from. It decides its shape: video and audio have
+ * Timestamps, a PDF has page references, an image or a text has neither.
+ */
 export type SummarySource = "video" | "audio" | "pdf" | "image" | "text";
+
+/** The sources that arrive as an uploaded file; a text is sent as text, never stored. */
+export type UploadKind = Exclude<SummarySource, "text">;

@@ -3,7 +3,7 @@
  * supabase/migrations). Server-side only, with the service role key.
  */
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HistoryEntry, HistoryStore } from "@/core/ports";
 
 type HistoryRow = {
@@ -13,16 +13,7 @@ type HistoryRow = {
   opened_at: string;
 };
 
-export function createSupabaseHistoryStore({
-  url,
-  serviceRoleKey,
-}: {
-  url: string;
-  serviceRoleKey: string;
-}): HistoryStore {
-  const db = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+export function createSupabaseHistoryStore(db: SupabaseClient): HistoryStore {
 
   return {
     async recordOpened(entry) {

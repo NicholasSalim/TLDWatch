@@ -3,21 +3,13 @@
  * "narration" (see supabase/migrations). Server-side only, with the service role key.
  */
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NarrationAudioStore } from "@/core/ports";
 
 const BUCKET = "narration";
 
-export function createSupabaseNarrationAudioStore({
-  url,
-  serviceRoleKey,
-}: {
-  url: string;
-  serviceRoleKey: string;
-}): NarrationAudioStore {
-  const bucket = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  }).storage.from(BUCKET);
+export function createSupabaseNarrationAudioStore(db: SupabaseClient): NarrationAudioStore {
+  const bucket = db.storage.from(BUCKET);
 
   const publicUrl = (key: string) => bucket.getPublicUrl(key).data.publicUrl;
 

@@ -41,16 +41,24 @@ export const SOURCE_ICONS: Record<SummarySource, LucideIcon> = {
   text: FileText,
 };
 
-function Thumbnail({ videoId, source = "video" }: { videoId: string; source?: SummarySource }) {
-  // An Upload (or a text still being summarized, with no id yet) has no
-  // thumbnail online: a quiet placeholder for its kind instead.
+/**
+ * A Summary's picture: the YouTube thumbnail, or, for an Upload (or a text
+ * still being summarized, with no id yet), an icon for its kind.
+ */
+export function Thumbnail({
+  videoId,
+  source = "video",
+  className,
+}: {
+  videoId: string;
+  source?: SummarySource;
+  className?: string;
+}) {
+  const box = cn("aspect-video w-28 shrink-0 rounded-lg", className);
   if (!videoId || isUploadId(videoId)) {
     const Icon = SOURCE_ICONS[source];
     return (
-      <div
-        aria-hidden
-        className="grid aspect-video w-28 shrink-0 place-items-center rounded-lg bg-white/8 text-haze"
-      >
+      <div aria-hidden className={cn(box, "grid place-items-center bg-white/8 text-haze")}>
         <Icon className="size-6" />
       </div>
     );
@@ -62,7 +70,7 @@ function Thumbnail({ videoId, source = "video" }: { videoId: string; source?: Su
       alt=""
       width={112}
       height={63}
-      className="aspect-video w-28 shrink-0 rounded-lg object-cover"
+      className={cn(box, "object-cover")}
     />
   );
 }
@@ -118,7 +126,6 @@ export function Summarizing({ videoId, source = "video" }: { videoId: string; so
   );
 }
 
-/** The language switch on a Summary: English, or the language the video is spoken in. */
 /** Why the language chosen isn't showing. */
 export type LanguageProblem = "failed" | "members-only" | "not-offered";
 

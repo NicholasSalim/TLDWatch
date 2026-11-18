@@ -4,21 +4,13 @@
  * Server-side only, with the service role key.
  */
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UploadStorage } from "@/core/ports";
 
 const BUCKET = "uploads";
 
-export function createSupabaseUploadStorage({
-  url,
-  serviceRoleKey,
-}: {
-  url: string;
-  serviceRoleKey: string;
-}): UploadStorage {
-  const bucket = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  }).storage.from(BUCKET);
+export function createSupabaseUploadStorage(db: SupabaseClient): UploadStorage {
+  const bucket = db.storage.from(BUCKET);
 
   return {
     async createUploadUrl(path) {

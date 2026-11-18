@@ -5,23 +5,14 @@ import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import {
-  ArrowUp,
-  FileAudio,
-  FileImage,
-  FileText,
-  FileType,
-  FileVideo,
-  Headphones,
-  Paperclip,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowUp, Headphones, Paperclip } from "lucide-react";
 import type { SummariesLeft } from "@/core/core";
-import { judgeText, LONG_TEXT_MAX_CHARACTERS, type FileKind } from "@/core/file-kind";
+import { judgeText, LONG_TEXT_MAX_CHARACTERS } from "@/core/file-kind";
 import { LENGTH_LABELS, LENGTHS, type Length, type Summary, type SummarySource } from "@/core/summary";
 import { parseVideoUrl } from "@/core/video-url";
 import { useAutoplay } from "@/lib/autoplay";
-import { inspectFile, UPLOAD_KINDS, UPLOAD_MAX_MB } from "@/lib/check-file";
+import { UPLOAD_MAX_MB } from "@/core/limits";
+import { inspectFile, UPLOAD_KINDS } from "@/lib/check-file";
 import { openSignIn } from "@/lib/me";
 import { openUpload } from "@/components/upload-dialog";
 import { rejectionText } from "@/lib/rejection-text";
@@ -29,7 +20,8 @@ import { fetchSummary, fetchTextSummary } from "@/lib/summary-client";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/segmented";
 import { SummaryCard } from "@/components/summary-card";
-import { Summarizing } from "@/components/summary-view";
+import { SOURCE_ICONS, Summarizing } from "@/components/summary-view";
+import { getJson } from "@/lib/json-fetch";
 
 // Adapted from the 21st.dev "ai-chat-input" by preetsuthar17, reshaped for TLDWatch.
 
@@ -39,13 +31,6 @@ const PLACEHOLDERS = [
   "Drop a video, audio file, PDF or image",
 ];
 
-const KIND_ICONS: Record<FileKind, LucideIcon> = {
-  video: FileVideo,
-  audio: FileAudio,
-  pdf: FileType,
-  image: FileImage,
-  text: FileText,
-};
 
 const LANGUAGES = [
   { value: "english", label: "English" },
@@ -82,10 +67,7 @@ export function SummarizeInput() {
 
   // How many new Summaries are left today; also gives a first-time Guest their cookie.
   useEffect(() => {
-    fetch("/api/summaries-left")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((left: SummariesLeft | null) => left && setSummariesLeft(left))
-      .catch(() => {});
+    void getJson<SummariesLeft | null>("/api/summaries-left", null).then((left) => left && setSummariesLeft(left));
   }, []);
 
   // Cycle the placeholder while the input is idle.
@@ -570,7 +552,7 @@ function AttachMenu({ onPick }: { onPick: (file: File) => void }) {
           className="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-white/10 bg-[#151a3c] p-1.5 shadow-[0_16px_48px_-16px_rgb(0_0_0/0.8)] sm:inset-x-auto sm:top-(--menu-top) sm:bottom-auto sm:left-(--menu-left) sm:w-80"
         >
           {UPLOAD_KINDS.map(({ kind, label, formats, accept: kindAccept }) => {
-            const Icon = KIND_ICONS[kind];
+            const Icon = SOURCE_ICONS[kind];
             return (
               <button
                 key={kind}

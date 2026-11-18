@@ -2,11 +2,11 @@
  * Test doubles for the core's adapters: a Summary engine that counts calls,
  * an in-memory Store and a fixed Clock.
  */
-import type { Length, LengthContent } from "./summary";
+import { guestIdOf } from "./requester";
+import { baseLanguage, type Length, type LengthContent, type UploadKind } from "./summary";
 import type {
   UploadStorage,
   UploadedFile,
-  UploadKind,
   Clock,
   NarrationAudioStore,
   NaturalVoice,
@@ -160,7 +160,7 @@ export class InMemorySummaryStore implements SummaryStore {
   async deleteGuestOwnedBefore(cutoff: string) {
     const old = new Set(
       [...this.summaries.values()]
-        .filter((s) => s.ownerId?.startsWith("guest-") && s.language === "english" && s.createdAt < cutoff)
+        .filter((s) => s.ownerId !== undefined && guestIdOf(s.ownerId) !== null && s.language === "english" && s.createdAt < cutoff)
         .map((s) => s.videoId),
     );
     for (const [key, summary] of this.summaries) {
@@ -242,7 +242,7 @@ export class InMemoryUsageCounters implements UsageCounters {
 export class FakeNaturalVoice implements NaturalVoice {
   /** English has two voices, Korean one; any other language falls back to "voice-a". */
   voicesFor(languageCode: string) {
-    const base = languageCode.split("-")[0];
+    const base = baseLanguage(languageCode);
     return base === "en" ? ["voice-a", "voice-b"] : base === "ko" ? ["voice-ko"] : ["voice-a"];
   }
   readonly model = "test-model";

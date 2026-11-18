@@ -5,6 +5,7 @@ import { useAutoplay } from "@/lib/autoplay";
 import { openSignIn, useMe } from "@/lib/me";
 import { cn } from "@/lib/utils";
 import { openDeleteAccount } from "@/components/delete-account-dialog";
+import { DEFAULT_LIMITS } from "@/core/limits";
 
 /** Settings: listening for everyone; the account, and deleting it, for Members. */
 export function SettingsPanel() {
@@ -64,7 +65,7 @@ export function SettingsPanel() {
             </Row>
           </>
         ) : (
-          <Row label="You're using TLDWatch as a Guest" hint="Sign in for 10 new Summaries a day, a History and Natural voices.">
+          <Row label="You're using TLDWatch as a Guest" hint={`Sign in for ${DEFAULT_LIMITS.memberDailySummaries} new Summaries a day, a History and Natural voices.`}>
             <button
               type="button"
               onClick={openSignIn}

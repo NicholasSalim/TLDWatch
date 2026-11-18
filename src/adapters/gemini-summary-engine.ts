@@ -5,7 +5,8 @@
 import "server-only";
 import { FileState, GoogleGenAI, MediaResolution } from "@google/genai";
 import { z } from "zod";
-import type { SummaryEngine, UploadKind } from "@/core/ports";
+import type { SummaryEngine } from "@/core/ports";
+import type { UploadKind } from "@/core/summary";
 import { engineOutputSchema } from "@/core/summary";
 
 const responseJsonSchema: Record<string, unknown> = z.toJSONSchema(engineOutputSchema);

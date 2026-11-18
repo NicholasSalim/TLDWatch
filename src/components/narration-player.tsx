@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Headphones, Pause, Play, Square } from "lucide-react";
 import type { NarrationResult, NaturalVoiceAllowance } from "@/core/core";
-import type { Length, SummaryLanguage } from "@/core/summary";
+import { baseLanguage, type Length, type SummaryLanguage } from "@/core/summary";
+import { getJson, postJson } from "@/lib/json-fetch";
 import { useMe } from "@/lib/me";
 import { primeSpeech, speechSupported, useVoices, voicesFor } from "@/lib/speech";
 import { readPreference, writePreference } from "@/lib/preferences";
@@ -44,12 +45,10 @@ const MIN_NARRATION_CHARACTERS = 100;
 // The Natural voices on offer per language, fetched once per page and shared.
 const voicesRequests = new Map<string, Promise<NaturalVoiceOption[]>>();
 function loadNaturalVoices(languageCode: string): Promise<NaturalVoiceOption[]> {
-  const base = languageCode.toLowerCase().split("-")[0];
+  const base = baseLanguage(languageCode);
   let request = voicesRequests.get(base);
   if (!request) {
-    request = fetch(`/api/narration/voices?lang=${encodeURIComponent(base)}`)
-      .then((r) => (r.ok ? (r.json() as Promise<NaturalVoiceOption[]>) : []))
-      .catch(() => []);
+    request = getJson<NaturalVoiceOption[]>(`/api/narration/voices?lang=${encodeURIComponent(base)}`, []);
     voicesRequests.set(base, request);
   }
   return request;
@@ -58,9 +57,7 @@ function loadNaturalVoices(languageCode: string): Promise<NaturalVoiceOption[]> 
 // The allowance, fetched once per page and shared by every player on it.
 let allowanceRequest: Promise<NaturalVoiceAllowance | null> | null = null;
 function loadAllowance(): Promise<NaturalVoiceAllowance | null> {
-  allowanceRequest ??= fetch("/api/narration/allowance", { cache: "no-store" })
-    .then((r) => (r.ok ? (r.json() as Promise<NaturalVoiceAllowance>) : null))
-    .catch(() => null);
+  allowanceRequest ??= getJson<NaturalVoiceAllowance | null>("/api/narration/allowance", null, { cache: "no-store" });
   return allowanceRequest;
 }
 
@@ -97,7 +94,7 @@ export function NarrationPlayer({
   const isMember = !!me?.member;
   const device = useVoices();
   const voices = voicesFor(device.voices, languageCode);
-  const base = languageCode.split("-")[0];
+  const base = baseLanguage(languageCode);
 
   // Read only after mount (the player renders nothing before), so no hydration mismatch.
   // Either "natural" or a device voice's URI; null until someone chooses.
@@ -341,17 +338,11 @@ async function askForNarration(
   length: Length,
   naturalVoiceId: string | undefined,
 ): Promise<NarrationResult> {
-  try {
-    const response = await fetch("/api/narration", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId, language, length, naturalVoiceId }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return (await response.json()) as NarrationResult;
-  } catch {
-    return { voice: "standard", reason: "natural-voice-unavailable" };
-  }
+  return postJson(
+    "/api/narration",
+    { videoId, language, length, naturalVoiceId },
+    { voice: "standard", reason: "natural-voice-unavailable" },
+  );
 }
 
 function Message({ children }: { children: React.ReactNode }) {

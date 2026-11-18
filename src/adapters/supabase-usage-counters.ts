@@ -3,19 +3,10 @@
  * table, changed only through its atomic functions (see supabase/migrations).
  */
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { UsageCounters } from "@/core/ports";
 
-export function createSupabaseUsageCounters({
-  url,
-  serviceRoleKey,
-}: {
-  url: string;
-  serviceRoleKey: string;
-}): UsageCounters {
-  const db = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+export function createSupabaseUsageCounters(db: SupabaseClient): UsageCounters {
 
   return {
     async tryUse(counter, day, amount, limit) {

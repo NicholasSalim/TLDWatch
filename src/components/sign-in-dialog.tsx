@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { DEFAULT_LIMITS, DURATION_LIMIT_MINUTES } from "@/core/limits";
 
 /**
  * The sign-in dialog, mounted once for the whole site and opened with
@@ -48,7 +49,8 @@ export function SignInDialog() {
           </button>
         </div>
         <p className="mt-2 text-pretty text-sm leading-relaxed text-haze">
-          Sign in with Google for 10 new summaries a day and videos up to 30 minutes long.
+          Sign in with Google for {DEFAULT_LIMITS.memberDailySummaries} new summaries a day and videos up to{" "}
+          {DURATION_LIMIT_MINUTES.member} minutes long.
         </p>
 
         <label

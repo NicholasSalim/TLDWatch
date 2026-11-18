@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import type { Summary } from "@/core/summary";
 import { Info } from "lucide-react";
 import { openSignIn, useMe } from "@/lib/me";
+import { fetchUploadSummary } from "@/lib/summary-client";
 import { SummaryCard } from "@/components/summary-card";
 
 type State = { kind: "loading" } | { kind: "ready"; summary: Summary } | { kind: "missing" };
@@ -24,12 +25,9 @@ export function UploadSummary() {
     // Wait to know who's asking, so a Member's sign-in has settled first.
     if (!me) return;
     let cancelled = false;
-    fetch(`/api/uploads/${encodeURIComponent(uploadId)}?lang=${encodeURIComponent(lang)}`, {
-      cache: "no-store",
-    })
-      .then((r) => (r.ok ? (r.json() as Promise<{ summary: Summary }>) : null))
-      .then((found) => !cancelled && setState(found ? { kind: "ready", summary: found.summary } : { kind: "missing" }))
-      .catch(() => !cancelled && setState({ kind: "missing" }));
+    void fetchUploadSummary(uploadId, lang).then((result) => {
+      if (!cancelled) setState(result.status === "ready" ? { kind: "ready", summary: result.summary } : { kind: "missing" });
+    });
     return () => {
       cancelled = true;
     };

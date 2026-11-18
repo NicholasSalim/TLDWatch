@@ -9,171 +9,58 @@ import { createElevenLabsNaturalVoice } from "@/adapters/elevenlabs-natural-voic
 import { createGeminiSummaryEngine } from "@/adapters/gemini-summary-engine";
 import { createGeminiTranslator } from "@/adapters/gemini-translator";
 import { createSupabaseHistoryStore } from "@/adapters/supabase-history-store";
-import { naturalVoiceSettings } from "@/server/natural-voices";
-import { summaryLanguagesFromEnv } from "@/server/summary-languages";
 import { createSupabaseMemberStore } from "@/adapters/supabase-member-store";
 import { createSupabaseNarrationAudioStore } from "@/adapters/supabase-narration-audio-store";
 import { createSupabaseSummaryStore } from "@/adapters/supabase-summary-store";
 import { createSupabaseUploadStorage } from "@/adapters/supabase-upload-storage";
 import { createSupabaseUsageCounters } from "@/adapters/supabase-usage-counters";
 import { createYouTubeVideoCatalog } from "@/adapters/youtube-video-catalog";
-import { createCore, DEFAULT_LIMITS, type Core, type UsageLimits } from "@/core/core";
-import type {
-  UploadStorage,
-  NarrationAudioStore,
-  NaturalVoice,
-  HistoryStore,
-  MemberStore,
-  SummaryEngine,
-  SummaryStore,
-  Translator,
-  UsageCounters,
-  VideoCatalog,
-} from "@/core/ports";
+import { createCore, type Core } from "@/core/core";
+import { DEFAULT_LIMITS, NATURAL_VOICE_MONTHLY_CHARACTERS, UPLOAD_MAX_MB } from "@/core/limits";
+import type { NaturalVoice } from "@/core/ports";
+import { intEnv, requireEnv } from "@/server/env";
+import { naturalVoiceSettings } from "@/server/natural-voices";
+import { summaryLanguagesFromEnv } from "@/server/summary-languages";
+import { supabaseAdmin } from "@/server/supabase-admin";
 
-const geminiModel = () => process.env.GEMINI_MODEL || "gemini-3.5-flash";
+const gemini = () => ({
+  apiKey: requireEnv("GEMINI_API_KEY"),
+  model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+});
 
-const engine = once(() =>
-  createGeminiSummaryEngine({
-    apiKey: requireEnv("GEMINI_API_KEY"),
-    model: geminiModel(),
-  }),
-);
-
-const translator = once(() =>
-  createGeminiTranslator({
-    apiKey: requireEnv("GEMINI_API_KEY"),
-    model: geminiModel(),
-  }),
-);
-
-const catalog = once(() =>
-  createYouTubeVideoCatalog({ apiKey: requireEnv("YOUTUBE_API_KEY") }),
-);
-
-const store = once(() =>
-  createSupabaseSummaryStore({
-    url: requireEnv("SUPABASE_URL"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  }),
-);
-
-const usage = once(() =>
-  createSupabaseUsageCounters({
-    url: requireEnv("SUPABASE_URL"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  }),
-);
-
-const members = once(() =>
-  createSupabaseMemberStore({
-    url: requireEnv("SUPABASE_URL"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  }),
-);
-
-const history = once(() =>
-  createSupabaseHistoryStore({
-    url: requireEnv("SUPABASE_URL"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  }),
-);
-
-const naturalVoice = once(() =>
+const synthesizer = once(() =>
   createElevenLabsNaturalVoice({ apiKey: requireEnv("ELEVENLABS_API_KEY"), ...naturalVoiceSettings() }),
 );
 
-const narrationAudio = once(() =>
-  createSupabaseNarrationAudioStore({
-    url: requireEnv("SUPABASE_URL"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  }),
-);
-
-const uploadStorage = once(() =>
-  createSupabaseUploadStorage({
-    url: requireEnv("SUPABASE_URL"),
-    serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-  }),
-);
-
-/** Limits come from the environment, falling back to the core's defaults. */
-function limitsFromEnv(): UsageLimits {
-  return {
-    guestDailySummaries: intEnv("GUEST_DAILY_SUMMARIES", DEFAULT_LIMITS.guestDailySummaries),
-    guestDailySummariesPerIp: intEnv(
-      "GUEST_DAILY_SUMMARIES_PER_IP",
-      DEFAULT_LIMITS.guestDailySummariesPerIp,
-    ),
-    memberDailySummaries: intEnv("MEMBER_DAILY_SUMMARIES", DEFAULT_LIMITS.memberDailySummaries),
-    dailyVideoMinutes: intEnv("DAILY_VIDEO_MINUTES", DEFAULT_LIMITS.dailyVideoMinutes),
-  };
-}
-
 export const getCore: () => Core = once(() =>
   createCore({
-    engine: {
-      summarizeYouTubeVideo: (videoId) => engine().summarizeYouTubeVideo(videoId),
-      summarizeFile: (file, kind, maxDurationSeconds) => engine().summarizeFile(file, kind, maxDurationSeconds),
-      summarizeText: (text) => engine().summarizeText(text),
-    } satisfies SummaryEngine,
-    translator: {
-      translateSummary: (lengths, target) => translator().translateSummary(lengths, target),
-    } satisfies Translator,
-    catalog: {
-      lookUpVideo: (videoId) => catalog().lookUpVideo(videoId),
-    } satisfies VideoCatalog,
-    store: {
-      findSummary: (videoId, language) => store().findSummary(videoId, language),
-      findSummaries: (videoIds, language) => store().findSummaries(videoIds, language),
-      saveSummary: (summary) => store().saveSummary(summary),
-      deleteOwnedBy: (ownerId) => store().deleteOwnedBy(ownerId),
-      deleteGuestOwnedBefore: (cutoff) => store().deleteGuestOwnedBefore(cutoff),
-    } satisfies SummaryStore,
-    usage: {
-      tryUse: (counter, day, amount, limit) => usage().tryUse(counter, day, amount, limit),
-      giveBack: (counter, day, amount) => usage().giveBack(counter, day, amount),
-      used: (counter, day) => usage().used(counter, day),
-      forget: (counter) => usage().forget(counter),
-      forgetBefore: (day) => usage().forgetBefore(day),
-    } satisfies UsageCounters,
-    members: {
-      findMember: (id) => members().findMember(id),
-      createMember: (member) => members().createMember(member),
-      setAutoplay: (id, on) => members().setAutoplay(id, on),
-      deleteMember: (id) => members().deleteMember(id),
-    } satisfies MemberStore,
-    history: {
-      recordOpened: (entry) => history().recordOpened(entry),
-      listHistory: (memberId, limit, before) => history().listHistory(memberId, limit, before),
-      removeEntry: (memberId, videoId) => history().removeEntry(memberId, videoId),
-      removeAllFor: (memberId) => history().removeAllFor(memberId),
-    } satisfies HistoryStore,
+    engine: lazy(() => createGeminiSummaryEngine(gemini())),
+    translator: lazy(() => createGeminiTranslator(gemini())),
+    catalog: lazy(() => createYouTubeVideoCatalog({ apiKey: requireEnv("YOUTUBE_API_KEY") })),
+    store: lazy(() => createSupabaseSummaryStore(supabaseAdmin())),
+    usage: lazy(() => createSupabaseUsageCounters(supabaseAdmin())),
+    members: lazy(() => createSupabaseMemberStore(supabaseAdmin())),
+    history: lazy(() => createSupabaseHistoryStore(supabaseAdmin())),
+    narrationAudio: lazy(() => createSupabaseNarrationAudioStore(supabaseAdmin())),
+    uploads: lazy(() => createSupabaseUploadStorage(supabaseAdmin())),
     voice: {
-      // Read from settings, so the API key is only needed to actually speak.
+      // Voices and model come from settings, so the API key is only needed to actually speak.
       voicesFor: (languageCode) => naturalVoiceSettings().voicesFor(languageCode),
       get model() {
         return naturalVoiceSettings().model;
       },
-      synthesize: (text, languageCode, voiceId) =>
-        naturalVoice().synthesize(text, languageCode, voiceId),
+      synthesize: (text, languageCode, voiceId) => synthesizer().synthesize(text, languageCode, voiceId),
     } satisfies NaturalVoice,
-    narrationAudio: {
-      findAudio: (key) => narrationAudio().findAudio(key),
-      saveAudio: (key, mp3) => narrationAudio().saveAudio(key, mp3),
-    } satisfies NarrationAudioStore,
     summaryLanguages: summaryLanguagesFromEnv(),
-    naturalVoiceMonthlyCharacters: intEnv("NATURAL_VOICE_MONTHLY_CHARACTERS", 8_000),
-    uploads: {
-      createUploadUrl: (path) => uploadStorage().createUploadUrl(path),
-      read: (path) => uploadStorage().read(path),
-      remove: (path) => uploadStorage().remove(path),
-      removeOlderThan: (cutoff) => uploadStorage().removeOlderThan(cutoff),
-      removeAllFor: (memberId) => uploadStorage().removeAllFor(memberId),
-    } satisfies UploadStorage,
-    uploadMaxMb: intEnv("UPLOAD_MAX_MB", 50),
+    naturalVoiceMonthlyCharacters: intEnv("NATURAL_VOICE_MONTHLY_CHARACTERS", NATURAL_VOICE_MONTHLY_CHARACTERS),
+    uploadMaxMb: intEnv("UPLOAD_MAX_MB", UPLOAD_MAX_MB),
     clock: { now: () => new Date() },
-    limits: limitsFromEnv(),
+    limits: {
+      guestDailySummaries: intEnv("GUEST_DAILY_SUMMARIES", DEFAULT_LIMITS.guestDailySummaries),
+      guestDailySummariesPerIp: intEnv("GUEST_DAILY_SUMMARIES_PER_IP", DEFAULT_LIMITS.guestDailySummariesPerIp),
+      memberDailySummaries: intEnv("MEMBER_DAILY_SUMMARIES", DEFAULT_LIMITS.memberDailySummaries),
+      dailyVideoMinutes: intEnv("DAILY_VIDEO_MINUTES", DEFAULT_LIMITS.dailyVideoMinutes),
+    },
     onFailure: (error, { videoId }) =>
       console.error(`Summary failed for ${videoId}: ${describeError(error)}`, error),
   }),
@@ -184,25 +71,23 @@ function once<T>(make: () => T): () => T {
   return () => (value ??= make());
 }
 
+/**
+ * The adapter `make()` builds, built only when one of its methods is first
+ * called: a request that never reaches it never needs its configuration.
+ */
+function lazy<T extends object>(make: () => T): T {
+  const adapter = once(make);
+  return new Proxy({} as T, {
+    get: (_, property) => {
+      const value: unknown = Reflect.get(adapter(), property);
+      return typeof value === "function" ? value.bind(adapter()) : value;
+    },
+  });
+}
+
 // Store errors are plain objects, which loggers print as `{}`.
 function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) return String(error.message);
   return String(error);
-}
-
-function intEnv(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Environment variable ${name} must be a whole number, got "${raw}"`);
-  }
-  return value;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing environment variable ${name}`);
-  return value;
 }
